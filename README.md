@@ -6,6 +6,8 @@
 
 
 
+---
+
 Real-time log analysis for UniFi Dream Router (UDR). Receives syslog over UDP, parses firewall/DHCP/Wi-Fi/system events, enriches with GeoIP, ASN, threat intelligence, and reverse DNS, stores everything in PostgreSQL, and serves a live React dashboard.
 
 Built for home network monitoring — runs as a single Docker container with zero external dependencies.
