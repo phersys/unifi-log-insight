@@ -1,0 +1,262 @@
+# UniFi Log Insight
+
+<img width="1985" height="1108" alt="image" src="https://github.com/user-attachments/assets/56a6ac3a-275a-4245-aaef-1462b35ccdc2" />
+
+<img width="2131" height="1178" alt="image" src="https://github.com/user-attachments/assets/c40b5f19-7dd0-4f35-93b8-fa8a2233a422" />
+
+
+
+Real-time log analysis for UniFi Dream Router (UDR). Receives syslog over UDP, parses firewall/DHCP/Wi-Fi/system events, enriches with GeoIP, ASN, threat intelligence, and reverse DNS, stores everything in PostgreSQL, and serves a live React dashboard.
+
+Built for home network monitoring — runs as a single Docker container with zero external dependencies.
+
+---
+
+## Features
+
+- **Syslog Receiver** — Listens on UDP 514, parses iptables firewall rules, DHCP leases, Wi-Fi events, and system messages
+- **IP Enrichment** — MaxMind GeoLite2 (country, city, coordinates), ASN lookup, AbuseIPDB threat scores, reverse DNS
+- **Smart Direction Detection** — Classifies traffic as inbound, outbound, inter-VLAN, or local with automatic WAN IP learning
+- **DNS Ready** — Parser supports DNS query/answer logging (requires additional UDR configuration — see [DNS Logging](#dns-logging) below)
+- **Live UI** — Auto-refreshing log stream with expandable detail rows, intelligent pause/resume when inspecting logs
+- **Filters** — Filter by log type, time range, action (allow/block/redirect), direction, IP address, rule name, and raw text search
+- **Dashboard** — Traffic breakdown by type and direction, logs-per-hour chart, top blocked countries/IPs, top threat IPs, top DNS queries
+- **Network Path Display** — Color-coded interface labels (Main, IoT, Hotspot, WAN) showing traffic flow direction
+- **CSV Export** — Download filtered results up to 100K rows
+- **Auto-Retention** — 60-day retention for firewall/DHCP/Wi-Fi, 10-day for DNS
+- **MaxMind Auto-Update** — Scheduled GeoLite2 database refresh with hot-reload (no restart needed)
+
+---
+
+## Prerequisites
+
+- **Docker** and **Docker Compose** on the host machine
+- **UniFi Dream Router** (or any UniFi gateway that supports remote syslog)
+- **MaxMind GeoLite2 account** (free) — for GeoIP/ASN lookups
+- **AbuseIPDB API key** (free tier, optional) — for threat scoring on blocked IPs
+
+---
+
+## Quick Start
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/jmasarweh/unifi-log-insight.git
+cd unifi-log-insight
+```
+
+### 2. Configure Environment
+
+Create a `.env` file in the project root:
+
+```env
+# PostgreSQL (required)
+POSTGRES_PASSWORD=your_strong_password_here
+
+# AbuseIPDB - free at https://www.abuseipdb.com/register (optional)
+ABUSEIPDB_API_KEY=your_key_here
+
+# MaxMind GeoLite2 - free at https://www.maxmind.com/en/geolite2/signup (optional but recommended)
+MAXMIND_ACCOUNT_ID=your_account_id
+MAXMIND_LICENSE_KEY=your_license_key
+
+# Timezone for scheduled tasks (used by cron for MaxMind updates)
+TZ=Europe/London
+```
+
+### 3. MaxMind Databases
+
+You have two options:
+
+**Option A — Auto-download (recommended):** Set `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` in `.env`. If no `.mmdb` files exist on first boot, the container downloads them automatically.
+
+**Option B — Manual download:** Download from your [MaxMind account](https://www.maxmind.com/en/accounts/current/geoip/downloads) and place in the `maxmind/` directory:
+- `GeoLite2-City.mmdb`
+- `GeoLite2-ASN.mmdb`
+
+### 4. Build and Run
+
+```bash
+docker compose up -d --build
+```
+
+### 5. Configure UDR Syslog
+
+In your UniFi Network controller:
+1. Go to **Settings → System → Advanced**
+2. Enable **Remote Syslog**
+3. Set the syslog server to `<docker-host-ip>` on port `514`
+
+### 6. Open the UI
+
+Navigate to `http://<docker-host-ip>:8090`
+
+---
+
+## Architecture
+
+Everything runs inside a single Docker container, managed by supervisord:
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Docker Container                                    │
+│                                                      │
+│  ┌─────────────┐   ┌──────────────┐   ┌──────────┐  │
+│  │   Syslog     │──▶│   Enrichment  │──▶│ PostgreSQL│  │
+│  │  Receiver    │   │  GeoIP/ASN   │   │  Storage  │  │
+│  │  UDP :514    │   │  AbuseIPDB   │   │          │  │
+│  │             │   │  rDNS        │   │          │  │
+│  └─────────────┘   └──────────────┘   └────┬─────┘  │
+│                                            │        │
+│  ┌─────────────┐                     ┌─────┴──────┐  │
+│  │    Cron      │                     │  FastAPI    │  │
+│  │  MaxMind    │                     │  REST API   │  │
+│  │  Updates    │                     │  + React UI │  │
+│  └─────────────┘                     │  :8000      │  │
+│                                      └────────────┘  │
+└──────────────────────────────────────────────────────┘
+        UDP :514                        HTTP :8090
+      (syslog in)                     (UI + API out)
+```
+
+### Log Processing Pipeline
+
+1. **Receive** — Raw syslog UDP packets from UDR
+2. **Parse** — Extract fields from iptables, hostapd, dhclient, and dnsmasq messages (when DNS logging is enabled)
+3. **Classify** — Determine direction (inbound/outbound/inter-VLAN/local) based on interfaces and WAN IP
+4. **Enrich** — GeoIP country/city/coords, ASN org name, AbuseIPDB threat score, reverse DNS
+5. **Store** — Batched inserts into PostgreSQL with performance indexes
+6. **Serve** — REST API with pagination, filtering, sorting, and CSV export
+
+---
+
+## Configuration Reference
+
+### Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `POSTGRES_PASSWORD` | Yes | PostgreSQL password for the `unifi` user |
+| `ABUSEIPDB_API_KEY` | No | Enables threat scoring on blocked inbound IPs. Free tier: 1,000 lookups/day |
+| `MAXMIND_ACCOUNT_ID` | No | Enables GeoIP auto-update. Without it, manually place `.mmdb` files |
+| `MAXMIND_LICENSE_KEY` | No | Paired with account ID for auto-update |
+| `TZ` | No | Timezone for cron schedules. Defaults to UTC. Examples: `Europe/London`, `Asia/Amman`, `America/New_York` |
+
+### Ports
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| 514 | UDP | Syslog receiver (incoming logs from UDR) |
+| 8090 | TCP | Web UI and REST API |
+
+### Retention Policy
+
+| Log Type | Retention |
+|---|---|
+| Firewall, DHCP, Wi-Fi, System | 60 days |
+| DNS (when enabled) | 10 days |
+
+Cleanup runs daily at 03:00 (container local time).
+
+---
+
+## MaxMind Auto-Update
+
+When credentials are configured, GeoLite2 databases update automatically on **Wednesday and Saturday at 7:00 AM** (local time per `TZ`). This aligns with MaxMind's Tuesday/Friday publish schedule, giving a buffer for propagation.
+
+The receiver hot-reloads databases via signal — no container restart required.
+
+### Manual Update
+
+```bash
+docker exec unifi-log-insight /app/geoip-update.sh
+```
+
+### Check Update Logs
+
+```bash
+docker exec unifi-log-insight cat /var/log/geoip-update.log
+```
+
+---
+
+## UI Guide
+
+### Log Stream
+
+The main view shows a live-updating table of parsed logs:
+
+- **Type filters** — Toggle firewall, DNS, DHCP, Wi-Fi, system
+- **Time range** — 1h, 6h, 24h, 7d, 30d
+- **Action filters** — Allow, block, redirect
+- **Direction filters** — Inbound, outbound, VLAN, NAT
+- **Text search** — Filter by IP, rule name, or raw log content
+
+Click any row to expand full details including enrichment data, parsed rule breakdown, and raw log.
+
+The stream auto-pauses when a row is expanded and shows a count of new logs received. It resumes on collapse.
+
+### Dashboard
+
+Aggregated views with configurable time range:
+- Total logs, blocked count, high-threat count
+- Traffic direction breakdown
+- Logs-per-hour bar chart
+- Top blocked countries, IPs, threat IPs
+- Top DNS queries (when DNS logging is enabled)
+
+---
+
+## API Endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/logs` | Paginated log list with all filters |
+| `GET /api/logs/{id}` | Single log detail |
+| `GET /api/stats?time_range=24h` | Dashboard aggregations |
+| `GET /api/export` | CSV export with current filters |
+| `GET /api/health` | Health check with total count and latest timestamp |
+
+---
+
+## DNS Logging
+
+The app includes full DNS query parsing, but **the UDR does not send DNS logs by default**. The UDR's dnsmasq instance lacks the `log-queries` directive, and its configuration is auto-generated by `ubios-udapi-server` — manual edits are overwritten on reboot.
+
+**Current status:** There is no supported persistent method to enable DNS syslog on the UDR without workarounds that risk breaking on firmware updates.
+
+**Options if you want DNS visibility:**
+
+- **Pi-hole / AdGuard Home** — Deploy as your network's DNS server. These log all queries natively and also provide ad blocking. Point your UDR's DHCP to hand out the Pi-hole IP as the DNS server.
+- **Wait for Ubiquiti** — A future firmware update may expose a DNS logging toggle. The app will capture DNS logs automatically once the UDR starts emitting them.
+
+The dashboard includes a "Top DNS Queries" panel and the filter bar has a DNS type toggle — both will populate once DNS logs start flowing.
+
+---
+
+## Troubleshooting
+
+### No logs appearing
+
+1. Verify UDR syslog is configured and pointing to the correct IP
+2. Check the container is receiving packets: `docker logs unifi-log-insight | grep "received"`
+3. Ensure UDP port 514 isn't blocked by the host firewall
+
+### GeoIP not working
+
+1. Check if `.mmdb` files exist: `docker exec unifi-log-insight ls -la /app/maxmind/`
+2. Check enrichment status: `curl http://<host>:8090/api/health`
+3. If using auto-update, verify credentials: `docker exec unifi-log-insight /app/geoip-update.sh`
+
+### Container won't start
+
+1. Check logs: `docker compose logs`
+2. Verify `.env` exists and `POSTGRES_PASSWORD` is set
+3. If PostgreSQL data is corrupted, reset: `docker compose down -v && docker compose up -d --build`
+
+---
+
+## License
+
+MIT
