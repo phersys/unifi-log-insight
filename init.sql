@@ -61,3 +61,13 @@ BEGIN
     RETURN deleted;
 END;
 $$ LANGUAGE plpgsql;
+
+-- AbuseIPDB threat score cache (persistent across restarts)
+CREATE TABLE IF NOT EXISTS ip_threats (
+    ip              INET PRIMARY KEY,
+    threat_score    INTEGER NOT NULL DEFAULT 0,
+    threat_categories TEXT[],
+    looked_up_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ip_threats_looked_up ON ip_threats (looked_up_at);

@@ -226,7 +226,7 @@ def main():
     db.connect()
 
     # Initialize enrichment
-    enricher = Enricher()
+    enricher = Enricher(db=db)
 
     # Start receiver
     receiver = SyslogReceiver(db, enricher)

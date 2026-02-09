@@ -163,14 +163,16 @@ class AbuseIPDBEnricher:
     API_URL = 'https://api.abuseipdb.com/api/v2/check'
     STATS_FILE = '/tmp/abuseipdb_stats.json'
 
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str = None, db=None):
         self.api_key = api_key or os.environ.get('ABUSEIPDB_API_KEY', '')
-        self.cache = TTLCache(ttl_seconds=86400)  # 24h cache
+        self.cache = TTLCache(ttl_seconds=86400)  # 24h in-memory hot cache
+        self.db = db  # Database instance for persistent threat cache
         self.enabled = bool(self.api_key)
         self._daily_count = 0
         self._daily_reset = time.time()
         self._lock = threading.Lock()
         self.DAILY_LIMIT = 900  # Stay under 1000 free tier
+        self.STALE_DAYS = 4  # Refresh from API after this many days
 
         # Rate limit info from AbuseIPDB headers (source of truth)
         self._rate_limit_limit = None
@@ -222,7 +224,13 @@ class AbuseIPDBEnricher:
             pass  # Non-critical, don't break enrichment
 
     def lookup(self, ip_str: str) -> dict:
-        """Check an IP against AbuseIPDB. Returns threat_score and categories."""
+        """Check an IP against AbuseIPDB. Returns threat_score and categories.
+        
+        Lookup order:
+        1. In-memory cache (hot path, no I/O)
+        2. DB ip_threats table (< 4 days old)
+        3. AbuseIPDB API (writes back to DB + memory cache)
+        """
         if not self.enabled:
             return {}
 
@@ -230,12 +238,22 @@ class AbuseIPDBEnricher:
         if ip_str in self._excluded_ips:
             return {}
 
-        # Check cache first
+        # 1. Check in-memory cache
         cached = self.cache.get(ip_str)
         if cached is not None:
             return cached
 
-        # Check rate limit and pause state
+        # 2. Check persistent DB cache
+        if self.db:
+            try:
+                db_result = self.db.get_threat_cache(ip_str, max_age_days=self.STALE_DAYS)
+                if db_result:
+                    self.cache.set(ip_str, db_result)  # Promote to memory cache
+                    return db_result
+            except Exception as e:
+                logger.debug("DB threat cache lookup failed for %s: %s", ip_str, e)
+
+        # 3. Check rate limit and pause state
         if not self._check_rate_limit():
             return {}
 
@@ -293,6 +311,13 @@ class AbuseIPDBEnricher:
                 if reset_ts is not None:
                     self._rate_limit_reset = reset_ts
 
+            # Persist to DB and memory cache
+            if self.db:
+                try:
+                    self.db.upsert_threat(ip_str, result['threat_score'], result['threat_categories'])
+                except Exception as e:
+                    logger.debug("DB threat cache write failed for %s: %s", ip_str, e)
+
             self._write_stats()
             self.cache.set(ip_str, result)
             return result
@@ -343,9 +368,9 @@ class RDNSEnricher:
 class Enricher:
     """Orchestrates all enrichment for a parsed log entry."""
 
-    def __init__(self):
+    def __init__(self, db=None):
         self.geoip = GeoIPEnricher()
-        self.abuseipdb = AbuseIPDBEnricher()
+        self.abuseipdb = AbuseIPDBEnricher(db=db)
         self.rdns = RDNSEnricher()
         self._known_wan_ip = None
 

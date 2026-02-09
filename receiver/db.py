@@ -56,6 +56,28 @@ class Database:
             self.min_conn, self.max_conn, **self.conn_params
         )
         logger.info("PostgreSQL connection pool ready (min=%d, max=%d)", self.min_conn, self.max_conn)
+        self._ensure_schema()
+
+    def _ensure_schema(self):
+        """Run idempotent schema migrations (safe on every boot)."""
+        migrations = [
+            # ip_threats persistent cache (added Phase 6)
+            """CREATE TABLE IF NOT EXISTS ip_threats (
+                ip              INET PRIMARY KEY,
+                threat_score    INTEGER NOT NULL DEFAULT 0,
+                threat_categories TEXT[],
+                looked_up_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_ip_threats_looked_up ON ip_threats (looked_up_at)",
+        ]
+        try:
+            with self.get_conn() as conn:
+                with conn.cursor() as cur:
+                    for sql in migrations:
+                        cur.execute(sql)
+            logger.info("Schema migrations applied.")
+        except Exception as e:
+            logger.error("Schema migration failed: %s", e)
 
     def close(self):
         """Close all connections in the pool."""
@@ -123,3 +145,36 @@ class Database:
                 )
                 hourly = {row[0]: row[1] for row in cur.fetchall()}
         return {'total': total, 'last_hour': hourly}
+
+    # ── Threat cache (ip_threats table) ──────────────────────────────────────
+
+    def get_threat_cache(self, ip: str, max_age_days: int = 4) -> dict | None:
+        """Look up a cached threat score. Returns dict or None if stale/missing."""
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT threat_score, threat_categories FROM ip_threats "
+                    "WHERE ip = %s AND looked_up_at > NOW() - INTERVAL '%s days'",
+                    [ip, max_age_days]
+                )
+                row = cur.fetchone()
+                if row:
+                    return {
+                        'threat_score': row[0],
+                        'threat_categories': row[1] or [],
+                    }
+        return None
+
+    def upsert_threat(self, ip: str, threat_score: int, threat_categories: list):
+        """Insert or update a threat score for an IP."""
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO ip_threats (ip, threat_score, threat_categories, looked_up_at) "
+                    "VALUES (%s, %s, %s, NOW()) "
+                    "ON CONFLICT (ip) DO UPDATE SET "
+                    "  threat_score = EXCLUDED.threat_score, "
+                    "  threat_categories = EXCLUDED.threat_categories, "
+                    "  looked_up_at = NOW()",
+                    [ip, threat_score, threat_categories]
+                )
