@@ -1,0 +1,22 @@
+services:
+  unifi-log-insight:
+    build: .
+    container_name: unifi-log-insight
+    restart: unless-stopped
+    ports:
+      - "514:514/udp"
+      - "8090:8000"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./maxmind:/app/maxmind
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "unifi", "-d", "unifi_logs"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+    name: unifi-log-insight-pgdata

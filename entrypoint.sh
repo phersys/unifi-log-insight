@@ -1,0 +1,75 @@
+#!/bin/bash
+set -e
+
+PGDATA="/var/lib/postgresql/data"
+
+# Initialize PostgreSQL if data directory is empty
+if [ ! -s "$PGDATA/PG_VERSION" ]; then
+    echo "[entrypoint] Initializing PostgreSQL..."
+    chown -R postgres:postgres "$PGDATA"
+    su - postgres -c "/usr/lib/postgresql/16/bin/initdb -D $PGDATA"
+
+    # Start PostgreSQL temporarily to create database and schema
+    su - postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D $PGDATA -w start"
+
+    # Create user and database
+    su - postgres -c "psql -c \"CREATE USER unifi WITH PASSWORD '${POSTGRES_PASSWORD}';\""
+    su - postgres -c "psql -c \"CREATE DATABASE unifi_logs OWNER unifi;\""
+    su - postgres -c "psql -d unifi_logs -f /app/init.sql"
+    su - postgres -c "psql -d unifi_logs -c \"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO unifi;\""
+    su - postgres -c "psql -d unifi_logs -c \"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO unifi;\""
+
+    # Configure PostgreSQL to accept connections from the app
+    echo "host all all 127.0.0.1/32 md5" >> "$PGDATA/pg_hba.conf"
+    echo "local all all trust" >> "$PGDATA/pg_hba.conf"
+
+    # Tune for logging workload
+    cat >> "$PGDATA/postgresql.conf" <<EOF
+
+# UniFi Log Insight tuning
+listen_addresses = '127.0.0.1'
+shared_buffers = 128MB
+work_mem = 8MB
+maintenance_work_mem = 64MB
+effective_cache_size = 256MB
+wal_buffers = 8MB
+checkpoint_completion_target = 0.9
+max_wal_size = 512MB
+synchronous_commit = off
+EOF
+
+    su - postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D $PGDATA -w stop"
+    echo "[entrypoint] PostgreSQL initialized."
+else
+    echo "[entrypoint] PostgreSQL data directory exists, skipping init."
+    chown -R postgres:postgres "$PGDATA"
+fi
+
+echo "[entrypoint] Starting services via supervisord..."
+
+# Configure MaxMind GeoIP auto-update if credentials are provided
+if [ -n "$MAXMIND_ACCOUNT_ID" ] && [ -n "$MAXMIND_LICENSE_KEY" ]; then
+    echo "[entrypoint] Configuring MaxMind GeoIP auto-update..."
+    cat > /etc/GeoIP.conf <<GEOEOF
+AccountID $MAXMIND_ACCOUNT_ID
+LicenseKey $MAXMIND_LICENSE_KEY
+EditionIDs GeoLite2-City GeoLite2-ASN
+DatabaseDirectory /app/maxmind
+GEOEOF
+
+    # Schedule: Wednesday 07:00 UTC and Saturday 07:00 UTC
+    echo "0 7 * * 3,6 /app/geoip-update.sh >> /var/log/geoip-update.log 2>&1" > /etc/cron.d/geoipupdate
+    chmod 0644 /etc/cron.d/geoipupdate
+
+    # Run an initial update if databases are missing
+    if [ ! -f /app/maxmind/GeoLite2-City.mmdb ]; then
+        echo "[entrypoint] No GeoLite2 databases found, running initial download..."
+        /app/geoip-update.sh
+    fi
+
+    echo "[entrypoint] GeoIP auto-update configured (Wed & Sat @ 07:00 UTC)"
+else
+    echo "[entrypoint] MaxMind credentials not set, skipping GeoIP auto-update"
+fi
+
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

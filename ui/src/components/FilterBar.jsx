@@ -1,0 +1,192 @@
+import React, { useState, useEffect, useCallback } from 'react'
+
+const LOG_TYPES = ['firewall', 'dns', 'dhcp', 'wifi', 'system']
+const TIME_RANGES = [
+  { value: '1h', label: '1h' },
+  { value: '6h', label: '6h' },
+  { value: '24h', label: '24h' },
+  { value: '7d', label: '7d' },
+  { value: '30d', label: '30d' },
+]
+const ACTIONS = ['allow', 'block', 'redirect']
+const DIRECTIONS = ['inbound', 'outbound', 'inter_vlan', 'nat']
+
+export default function FilterBar({ filters, onChange }) {
+  const [ipSearch, setIpSearch] = useState(filters.ip || '')
+  const [ruleSearch, setRuleSearch] = useState(filters.rule_name || '')
+  const [textSearch, setTextSearch] = useState(filters.search || '')
+
+  // Debounce text inputs
+  useEffect(() => {
+    const t = setTimeout(() => onChange({ ...filters, ip: ipSearch || null }), 400)
+    return () => clearTimeout(t)
+  }, [ipSearch])
+
+  useEffect(() => {
+    const t = setTimeout(() => onChange({ ...filters, rule_name: ruleSearch || null }), 400)
+    return () => clearTimeout(t)
+  }, [ruleSearch])
+
+  useEffect(() => {
+    const t = setTimeout(() => onChange({ ...filters, search: textSearch || null }), 400)
+    return () => clearTimeout(t)
+  }, [textSearch])
+
+  const toggleType = (type) => {
+    const current = filters.log_type ? filters.log_type.split(',') : LOG_TYPES
+    const updated = current.includes(type)
+      ? current.filter(t => t !== type)
+      : [...current, type]
+    onChange({ ...filters, log_type: updated.length === LOG_TYPES.length ? null : updated.join(',') })
+  }
+
+  const activeTypes = filters.log_type ? filters.log_type.split(',') : LOG_TYPES
+
+  const typeColors = {
+    firewall: 'bg-blue-500',
+    dns: 'bg-violet-500',
+    dhcp: 'bg-cyan-500',
+    wifi: 'bg-amber-500',
+    system: 'bg-gray-500',
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Row 1: Log types + time range */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          {LOG_TYPES.map(type => (
+            <button
+              key={type}
+              onClick={() => toggleType(type)}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
+                activeTypes.includes(type)
+                  ? `${typeColors[type]} text-white`
+                  : 'bg-gray-800 text-gray-500 hover:text-gray-400'
+              }`}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+
+        <div className="h-5 w-px bg-gray-700" />
+
+        <div className="flex items-center gap-1">
+          {TIME_RANGES.map(tr => (
+            <button
+              key={tr.value}
+              onClick={() => onChange({ ...filters, time_range: tr.value })}
+              className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                filters.time_range === tr.value
+                  ? 'bg-gray-700 text-white'
+                  : 'text-gray-500 hover:text-gray-400'
+              }`}
+            >
+              {tr.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="h-5 w-px bg-gray-700" />
+
+        <div className="flex items-center gap-1">
+          {ACTIONS.map(action => (
+            <button
+              key={action}
+              onClick={() => {
+                const current = filters.rule_action ? filters.rule_action.split(',') : []
+                const updated = current.includes(action)
+                  ? current.filter(a => a !== action)
+                  : [...current, action]
+                onChange({ ...filters, rule_action: updated.length ? updated.join(',') : null })
+              }}
+              className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                filters.rule_action?.split(',').includes(action)
+                  ? action === 'block' ? 'bg-red-500/30 text-red-400' : action === 'allow' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'
+                  : 'text-gray-500 hover:text-gray-400'
+              }`}
+            >
+              {action}
+            </button>
+          ))}
+        </div>
+
+        <div className="h-5 w-px bg-gray-700" />
+
+        <div className="flex items-center gap-1">
+          {DIRECTIONS.map(dir => (
+            <button
+              key={dir}
+              onClick={() => {
+                const current = filters.direction ? filters.direction.split(',') : []
+                const updated = current.includes(dir)
+                  ? current.filter(d => d !== dir)
+                  : [...current, dir]
+                onChange({ ...filters, direction: updated.length ? updated.join(',') : null })
+              }}
+              className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                filters.direction?.split(',').includes(dir)
+                  ? 'bg-gray-700 text-white'
+                  : 'text-gray-500 hover:text-gray-400'
+              }`}
+            >
+              {dir === 'inter_vlan' ? 'vlan' : dir}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Row 2: Text searches */}
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="IP address..."
+            value={ipSearch}
+            onChange={e => setIpSearch(e.target.value)}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-gray-500 w-40"
+          />
+          {ipSearch && (
+            <button onClick={() => setIpSearch('')} className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300 text-xs">✕</button>
+          )}
+        </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Rule name..."
+            value={ruleSearch}
+            onChange={e => setRuleSearch(e.target.value)}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-gray-500 w-40"
+          />
+          {ruleSearch && (
+            <button onClick={() => setRuleSearch('')} className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300 text-xs">✕</button>
+          )}
+        </div>
+        <div className="relative flex-1 max-w-xs">
+          <input
+            type="text"
+            placeholder="Search raw log..."
+            value={textSearch}
+            onChange={e => setTextSearch(e.target.value)}
+            className="w-full bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+          />
+          {textSearch && (
+            <button onClick={() => setTextSearch('')} className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300 text-xs">✕</button>
+          )}
+        </div>
+        <button
+          onClick={() => {
+            setIpSearch('')
+            setRuleSearch('')
+            setTextSearch('')
+            onChange({ time_range: '24h', page: 1, per_page: 50 })
+          }}
+          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          Reset
+        </button>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,331 @@
+"""
+UniFi Log Insight - IP Enrichment
+
+Enriches public IPs with:
+- GeoIP (country, city, lat/lon) via MaxMind GeoLite2-City
+- ASN (number, name) via MaxMind GeoLite2-ASN
+- Threat score via AbuseIPDB (blocked firewall events only, cached 24h)
+- Reverse DNS via PTR lookup (cached 24h)
+"""
+
+import os
+import socket
+import ipaddress
+import logging
+import time
+import threading
+from typing import Optional
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+# ── Private/reserved IP detection ─────────────────────────────────────────────
+
+_PRIVATE_NETWORKS = [
+    ipaddress.ip_network('10.0.0.0/8'),
+    ipaddress.ip_network('172.16.0.0/12'),
+    ipaddress.ip_network('192.168.0.0/16'),
+    ipaddress.ip_network('127.0.0.0/8'),
+    ipaddress.ip_network('169.254.0.0/16'),
+    ipaddress.ip_network('224.0.0.0/4'),     # multicast
+    ipaddress.ip_network('255.255.255.255/32'),
+]
+
+
+def is_public_ip(ip_str: str) -> bool:
+    """Check if an IP is public (not RFC1918, loopback, link-local, multicast)."""
+    if not ip_str:
+        return False
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        return not any(ip in net for net in _PRIVATE_NETWORKS)
+    except ValueError:
+        return False
+
+
+# ── Thread-safe cache ─────────────────────────────────────────────────────────
+
+class TTLCache:
+    """Simple thread-safe cache with TTL expiry."""
+
+    def __init__(self, ttl_seconds: int = 86400):
+        self.ttl = ttl_seconds
+        self._cache = {}
+        self._lock = threading.Lock()
+
+    def get(self, key: str) -> Optional[dict]:
+        with self._lock:
+            entry = self._cache.get(key)
+            if entry and time.time() - entry['time'] < self.ttl:
+                return entry['value']
+            elif entry:
+                del self._cache[key]
+            return None
+
+    def set(self, key: str, value: dict):
+        with self._lock:
+            self._cache[key] = {'value': value, 'time': time.time()}
+
+    def size(self) -> int:
+        with self._lock:
+            return len(self._cache)
+
+
+# ── GeoIP Enrichment ─────────────────────────────────────────────────────────
+
+class GeoIPEnricher:
+    """MaxMind GeoLite2 lookups for City and ASN."""
+
+    def __init__(self, db_dir: str = '/app/maxmind'):
+        self.city_reader = None
+        self.asn_reader = None
+        self.db_dir = db_dir
+        self._load_databases(db_dir)
+
+    def _load_databases(self, db_dir: str):
+        try:
+            import geoip2.database
+            city_path = os.path.join(db_dir, 'GeoLite2-City.mmdb')
+            asn_path = os.path.join(db_dir, 'GeoLite2-ASN.mmdb')
+
+            if os.path.exists(city_path):
+                self.city_reader = geoip2.database.Reader(city_path)
+                logger.info("Loaded GeoLite2-City database")
+            else:
+                logger.warning("GeoLite2-City.mmdb not found at %s", city_path)
+
+            if os.path.exists(asn_path):
+                self.asn_reader = geoip2.database.Reader(asn_path)
+                logger.info("Loaded GeoLite2-ASN database")
+            else:
+                logger.warning("GeoLite2-ASN.mmdb not found at %s", asn_path)
+
+        except ImportError:
+            logger.error("geoip2 package not installed")
+        except Exception as e:
+            logger.error("Failed to load MaxMind databases: %s", e)
+
+    def reload(self):
+        """Reload databases from disk (called after geoipupdate)."""
+        logger.info("Reloading MaxMind databases...")
+        old_city = self.city_reader
+        old_asn = self.asn_reader
+        self._load_databases(self.db_dir)
+        # Close old readers after loading new ones
+        if old_city:
+            try: old_city.close()
+            except: pass
+        if old_asn:
+            try: old_asn.close()
+            except: pass
+        logger.info("MaxMind databases reloaded")
+
+    def lookup(self, ip_str: str) -> dict:
+        """Look up GeoIP and ASN data for an IP. Returns dict of fields."""
+        result = {}
+
+        if self.city_reader:
+            try:
+                resp = self.city_reader.city(ip_str)
+                result['geo_country'] = resp.country.iso_code
+                result['geo_city'] = resp.city.name
+                if resp.location:
+                    result['geo_lat'] = float(resp.location.latitude) if resp.location.latitude else None
+                    result['geo_lon'] = float(resp.location.longitude) if resp.location.longitude else None
+            except Exception:
+                pass
+
+        if self.asn_reader:
+            try:
+                resp = self.asn_reader.asn(ip_str)
+                result['asn_number'] = resp.autonomous_system_number
+                result['asn_name'] = resp.autonomous_system_organization
+            except Exception:
+                pass
+
+        return result
+
+    def close(self):
+        if self.city_reader:
+            self.city_reader.close()
+        if self.asn_reader:
+            self.asn_reader.close()
+
+
+# ── AbuseIPDB Enrichment ─────────────────────────────────────────────────────
+
+class AbuseIPDBEnricher:
+    """AbuseIPDB threat score lookups. Only for blocked firewall events."""
+
+    API_URL = 'https://api.abuseipdb.com/api/v2/check'
+
+    def __init__(self, api_key: str = None):
+        self.api_key = api_key or os.environ.get('ABUSEIPDB_API_KEY', '')
+        self.cache = TTLCache(ttl_seconds=86400)  # 24h cache
+        self.enabled = bool(self.api_key)
+        self._daily_count = 0
+        self._daily_reset = time.time()
+        self._lock = threading.Lock()
+        self.DAILY_LIMIT = 900  # Stay under 1000 free tier
+
+        if self.enabled:
+            logger.info("AbuseIPDB enrichment enabled (daily limit: %d)", self.DAILY_LIMIT)
+        else:
+            logger.warning("AbuseIPDB API key not set — threat enrichment disabled")
+
+    def _check_rate_limit(self) -> bool:
+        """Check if we're within daily rate limit."""
+        with self._lock:
+            # Reset counter daily
+            if time.time() - self._daily_reset > 86400:
+                self._daily_count = 0
+                self._daily_reset = time.time()
+            return self._daily_count < self.DAILY_LIMIT
+
+    def lookup(self, ip_str: str) -> dict:
+        """Check an IP against AbuseIPDB. Returns threat_score and categories."""
+        if not self.enabled:
+            return {}
+
+        # Check cache first
+        cached = self.cache.get(ip_str)
+        if cached is not None:
+            return cached
+
+        # Check rate limit
+        if not self._check_rate_limit():
+            logger.debug("AbuseIPDB daily limit reached, skipping %s", ip_str)
+            return {}
+
+        try:
+            headers = {
+                'Key': self.api_key,
+                'Accept': 'application/json',
+            }
+            params = {
+                'ipAddress': ip_str,
+                'maxAgeInDays': 90,
+            }
+            resp = requests.get(self.API_URL, headers=headers, params=params, timeout=5)
+            resp.raise_for_status()
+            data = resp.json().get('data', {})
+
+            result = {
+                'threat_score': data.get('abuseConfidenceScore', 0),
+                'threat_categories': [str(c) for c in data.get('categories', [])],
+            }
+
+            with self._lock:
+                self._daily_count += 1
+
+            self.cache.set(ip_str, result)
+            return result
+
+        except requests.Timeout:
+            logger.debug("AbuseIPDB timeout for %s", ip_str)
+        except requests.RequestException as e:
+            logger.warning("AbuseIPDB error for %s: %s", ip_str, e)
+        except Exception as e:
+            logger.error("AbuseIPDB unexpected error: %s", e)
+
+        return {}
+
+    @property
+    def daily_usage(self) -> int:
+        with self._lock:
+            return self._daily_count
+
+
+# ── Reverse DNS ───────────────────────────────────────────────────────────────
+
+class RDNSEnricher:
+    """Reverse DNS (PTR) lookups with caching."""
+
+    def __init__(self, timeout: float = 2.0):
+        self.timeout = timeout
+        self.cache = TTLCache(ttl_seconds=86400)  # 24h cache
+
+    def lookup(self, ip_str: str) -> dict:
+        """Perform rDNS lookup. Returns {'rdns': hostname} or {}."""
+        cached = self.cache.get(ip_str)
+        if cached is not None:
+            return cached
+
+        try:
+            socket.setdefaulttimeout(self.timeout)
+            hostname, _, _ = socket.gethostbyaddr(ip_str)
+            result = {'rdns': hostname}
+        except (socket.herror, socket.gaierror, socket.timeout, OSError):
+            result = {'rdns': None}
+
+        self.cache.set(ip_str, result)
+        return result
+
+
+# ── Main Enrichment Pipeline ──────────────────────────────────────────────────
+
+class Enricher:
+    """Orchestrates all enrichment for a parsed log entry."""
+
+    def __init__(self):
+        self.geoip = GeoIPEnricher()
+        self.abuseipdb = AbuseIPDBEnricher()
+        self.rdns = RDNSEnricher()
+
+    def enrich(self, parsed: dict) -> dict:
+        """Enrich a parsed log entry with GeoIP, ASN, threat, and rDNS data.
+        
+        Strategy:
+        - GeoIP + ASN: all public IPs (local lookups, fast)
+        - AbuseIPDB: only blocked firewall events with public IPs
+        - rDNS: all public IPs
+        """
+        # Determine which IP to enrich (the public one)
+        ip_to_enrich = None
+        src_ip = parsed.get('src_ip')
+        dst_ip = parsed.get('dst_ip')
+
+        if src_ip and is_public_ip(src_ip):
+            ip_to_enrich = src_ip
+        elif dst_ip and is_public_ip(dst_ip):
+            ip_to_enrich = dst_ip
+
+        if not ip_to_enrich:
+            return parsed
+
+        # GeoIP + ASN (always, local lookup)
+        geo_data = self.geoip.lookup(ip_to_enrich)
+        parsed.update(geo_data)
+
+        # rDNS (always for public IPs)
+        rdns_data = self.rdns.lookup(ip_to_enrich)
+        if rdns_data.get('rdns'):
+            parsed['rdns'] = rdns_data['rdns']
+
+        # AbuseIPDB (only for blocked firewall events)
+        if (parsed.get('log_type') == 'firewall'
+                and parsed.get('rule_action') == 'block'):
+            threat_data = self.abuseipdb.lookup(ip_to_enrich)
+            if threat_data:
+                parsed.update(threat_data)
+
+        return parsed
+
+    def get_stats(self) -> dict:
+        """Return enrichment cache stats."""
+        return {
+            'geoip_loaded': self.geoip.city_reader is not None,
+            'asn_loaded': self.geoip.asn_reader is not None,
+            'abuseipdb_enabled': self.abuseipdb.enabled,
+            'abuseipdb_daily_usage': self.abuseipdb.daily_usage,
+            'abuseipdb_cache_size': self.abuseipdb.cache.size(),
+            'rdns_cache_size': self.rdns.cache.size(),
+        }
+
+    def close(self):
+        self.geoip.close()
+
+    def reload_geoip(self):
+        """Reload GeoIP databases (called via SIGUSR1)."""
+        self.geoip.reload()

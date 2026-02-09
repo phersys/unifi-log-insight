@@ -1,0 +1,125 @@
+"""
+UniFi Log Insight - Database Module
+
+Handles PostgreSQL connection pooling, log insertion, and retention cleanup.
+"""
+
+import os
+import logging
+from contextlib import contextmanager
+
+import psycopg2
+from psycopg2 import pool, extras
+
+logger = logging.getLogger(__name__)
+
+# Column names matching the logs table
+INSERT_COLUMNS = [
+    'timestamp', 'log_type', 'direction',
+    'src_ip', 'src_port', 'dst_ip', 'dst_port', 'protocol',
+    'rule_name', 'rule_desc', 'rule_action',
+    'interface_in', 'interface_out',
+    'mac_address', 'hostname',
+    'dns_query', 'dns_type', 'dns_answer',
+    'dhcp_event', 'wifi_event',
+    'geo_country', 'geo_city', 'geo_lat', 'geo_lon',
+    'asn_number', 'asn_name',
+    'threat_score', 'threat_categories', 'rdns',
+    'raw_log',
+]
+
+INSERT_SQL = f"""
+    INSERT INTO logs ({', '.join(INSERT_COLUMNS)})
+    VALUES ({', '.join(['%s'] * len(INSERT_COLUMNS))})
+"""
+
+
+class Database:
+    """PostgreSQL connection pool and operations."""
+
+    def __init__(self, conn_params: dict = None, min_conn: int = 2, max_conn: int = 10):
+        self.conn_params = conn_params or {
+            'host': '127.0.0.1',
+            'port': 5432,
+            'dbname': 'unifi_logs',
+            'user': 'unifi',
+            'password': os.environ.get('POSTGRES_PASSWORD', 'changeme'),
+        }
+        self.pool = None
+        self.min_conn = min_conn
+        self.max_conn = max_conn
+
+    def connect(self):
+        """Initialize the connection pool."""
+        logger.info("Connecting to PostgreSQL...")
+        self.pool = pool.ThreadedConnectionPool(
+            self.min_conn, self.max_conn, **self.conn_params
+        )
+        logger.info("PostgreSQL connection pool ready (min=%d, max=%d)", self.min_conn, self.max_conn)
+
+    def close(self):
+        """Close all connections in the pool."""
+        if self.pool:
+            self.pool.closeall()
+            logger.info("PostgreSQL connection pool closed.")
+
+    @contextmanager
+    def get_conn(self):
+        """Get a connection from the pool."""
+        conn = self.pool.getconn()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self.pool.putconn(conn)
+
+    def insert_log(self, parsed: dict):
+        """Insert a single parsed log entry."""
+        values = tuple(parsed.get(col) for col in INSERT_COLUMNS)
+
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(INSERT_SQL, values)
+
+    def insert_logs_batch(self, logs: list[dict]):
+        """Insert multiple parsed log entries in a single transaction."""
+        if not logs:
+            return
+
+        rows = [
+            tuple(log.get(col) for col in INSERT_COLUMNS)
+            for log in logs
+        ]
+
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                extras.execute_batch(cur, INSERT_SQL, rows, page_size=100)
+
+        logger.debug("Batch inserted %d logs", len(logs))
+
+    def run_retention_cleanup(self):
+        """Run the retention cleanup function. Returns number of deleted rows."""
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT cleanup_old_logs()")
+                deleted = cur.fetchone()[0]
+        if deleted > 0:
+            logger.info("Retention cleanup: deleted %d old logs", deleted)
+        return deleted
+
+    def get_stats(self) -> dict:
+        """Get basic stats for health check / logging."""
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM logs")
+                total = cur.fetchone()[0]
+                cur.execute(
+                    "SELECT log_type, COUNT(*) FROM logs "
+                    "WHERE timestamp > NOW() - INTERVAL '1 hour' "
+                    "GROUP BY log_type ORDER BY count DESC"
+                )
+                hourly = {row[0]: row[1] for row in cur.fetchall()}
+        return {'total': total, 'last_hour': hourly}

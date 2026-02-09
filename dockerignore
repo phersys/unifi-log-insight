@@ -1,0 +1,9 @@
+.env
+.git
+.gitignore
+maxmind/*.mmdb
+__pycache__
+*.pyc
+README.md
+ui/node_modules
+ui/dist

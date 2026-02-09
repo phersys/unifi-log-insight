@@ -1,0 +1,22 @@
+# Secrets
+.env
+.env.local
+
+# MaxMind databases (large binary files)
+maxmind/*.mmdb
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+ui/node_modules/
+ui/dist/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
