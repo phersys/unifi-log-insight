@@ -9,6 +9,7 @@ Enriches public IPs with:
 """
 
 import os
+import json
 import socket
 import ipaddress
 import logging
@@ -159,6 +160,7 @@ class AbuseIPDBEnricher:
     """AbuseIPDB threat score lookups. Only for blocked firewall events."""
 
     API_URL = 'https://api.abuseipdb.com/api/v2/check'
+    STATS_FILE = '/tmp/abuseipdb_stats.json'
 
     def __init__(self, api_key: str = None):
         self.api_key = api_key or os.environ.get('ABUSEIPDB_API_KEY', '')
@@ -168,6 +170,11 @@ class AbuseIPDBEnricher:
         self._daily_reset = time.time()
         self._lock = threading.Lock()
         self.DAILY_LIMIT = 900  # Stay under 1000 free tier
+
+        # Rate limit info from AbuseIPDB headers (source of truth)
+        self._rate_limit_limit = None
+        self._rate_limit_remaining = None
+        self._rate_limit_reset = None  # UTC ISO string
 
         if self.enabled:
             logger.info("AbuseIPDB enrichment enabled (daily limit: %d)", self.DAILY_LIMIT)
@@ -182,6 +189,20 @@ class AbuseIPDBEnricher:
                 self._daily_count = 0
                 self._daily_reset = time.time()
             return self._daily_count < self.DAILY_LIMIT
+
+    def _write_stats(self):
+        """Write rate limit stats to shared file for API process to read."""
+        try:
+            stats = {
+                'limit': self._rate_limit_limit,
+                'remaining': self._rate_limit_remaining,
+                'reset_at': self._rate_limit_reset,
+                'updated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            }
+            with open(self.STATS_FILE, 'w') as f:
+                json.dump(stats, f)
+        except Exception:
+            pass  # Non-critical, don't break enrichment
 
     def lookup(self, ip_str: str) -> dict:
         """Check an IP against AbuseIPDB. Returns threat_score and categories."""
@@ -218,7 +239,18 @@ class AbuseIPDBEnricher:
 
             with self._lock:
                 self._daily_count += 1
+                # Capture rate limit headers from AbuseIPDB
+                limit = resp.headers.get('X-RateLimit-Limit')
+                remaining = resp.headers.get('X-RateLimit-Remaining')
+                reset_ts = resp.headers.get('X-RateLimit-Reset')
+                if limit is not None:
+                    self._rate_limit_limit = int(limit)
+                if remaining is not None:
+                    self._rate_limit_remaining = int(remaining)
+                if reset_ts is not None:
+                    self._rate_limit_reset = reset_ts
 
+            self._write_stats()
             self.cache.set(ip_str, result)
             return result
 

@@ -8,6 +8,25 @@ const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
 ]
 
+function formatShortDate(isoStr) {
+  if (!isoStr) return '—'
+  try {
+    const d = new Date(isoStr)
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) +
+      ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  } catch { return '—' }
+}
+
+function formatAbuseIPDB(abuseipdb) {
+  if (!abuseipdb) return '—'
+  const limit = abuseipdb.limit
+  const remaining = abuseipdb.remaining
+  if (limit == null || remaining == null) return '—'
+  const used = limit - remaining
+  const reset = abuseipdb.reset_at ? formatShortDate(abuseipdb.reset_at) : '—'
+  return `${used.toLocaleString()}/${limit.toLocaleString()} · Reset ${reset}`
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('logs')
   const [health, setHealth] = useState(null)
@@ -55,6 +74,18 @@ export default function App() {
         <div className="flex items-center gap-3">
           {health && (
             <>
+              <span className="text-[10px] text-gray-600">
+                AbuseIPDB: {formatAbuseIPDB(health.abuseipdb)}
+              </span>
+              <span className="text-[10px] text-gray-700">|</span>
+              <span className="text-[10px] text-gray-600">
+                MaxMind: {formatShortDate(health.maxmind_last_update)}
+              </span>
+              <span className="text-[10px] text-gray-700">|</span>
+              <span className="text-[10px] text-gray-600">
+                Next pull: {formatShortDate(health.maxmind_next_update)}
+              </span>
+              <span className="text-[10px] text-gray-700">|</span>
               <span className="text-[10px] text-gray-600">
                 {health.total_logs?.toLocaleString()} logs
               </span>
