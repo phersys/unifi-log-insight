@@ -13,6 +13,8 @@ import time
 import logging
 import threading
 
+from enrichment import is_public_ip
+
 logger = logging.getLogger('backfill')
 
 BACKFILL_INTERVAL_SECONDS = 1800  # 30 minutes
@@ -99,12 +101,14 @@ class BackfillTask:
 
     def _patch_from_cache(self) -> int:
         """Update NULL threat_score log rows from ip_threats table.
-        
-        Only patches inbound blocked firewall logs (src_ip).
+
+        Two-pass approach mirrors enricher priority: src_ip first, then dst_ip
+        for remaining NULLs (e.g. outbound blocked traffic).
         Returns number of rows updated.
         """
         with self.db.get_conn() as conn:
             with conn.cursor() as cur:
+                # Pass 1: patch where src_ip matches (most common — inbound)
                 cur.execute("""
                     UPDATE logs
                     SET threat_score = t.threat_score,
@@ -114,27 +118,57 @@ class BackfillTask:
                       AND logs.threat_score IS NULL
                       AND logs.log_type = 'firewall'
                       AND logs.rule_action = 'block'
-                      AND logs.direction = 'inbound'
                 """)
-                return cur.rowcount
+                patched = cur.rowcount
+
+                # Pass 2: patch remaining NULLs where dst_ip matches
+                # (outbound blocked traffic where dst_ip was the enriched IP).
+                # Pass 1 already filled src_ip matches, so this only touches
+                # rows where src_ip had no ip_threats entry — matching enricher
+                # fallback logic (prefer src_ip, else dst_ip).
+                cur.execute("""
+                    UPDATE logs
+                    SET threat_score = t.threat_score,
+                        threat_categories = t.threat_categories
+                    FROM ip_threats t
+                    WHERE logs.dst_ip = t.ip
+                      AND logs.threat_score IS NULL
+                      AND logs.log_type = 'firewall'
+                      AND logs.rule_action = 'block'
+                """)
+                patched += cur.rowcount
+
+                return patched
 
     def _find_orphans(self) -> list[str]:
-        """Find IPs with NULL scores that are NOT in ip_threats cache.
-        
-        These are IPs where the API call genuinely failed (timeout/error).
-        Only looks at inbound blocked firewall logs (src_ip).
+        """Find public IPs with NULL scores that are NOT in ip_threats cache.
+
+        Checks both src_ip and dst_ip to match enricher scope.
+        Uses host() to guarantee bare IP strings (no /32 suffix from INET).
+        Returns only public IPs (enricher skips private IPs).
         """
         with self.db.get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT DISTINCT l.src_ip
-                    FROM logs l
-                    LEFT JOIN ip_threats t ON l.src_ip = t.ip
-                    WHERE l.threat_score IS NULL
-                      AND l.log_type = 'firewall'
-                      AND l.rule_action = 'block'
-                      AND l.direction = 'inbound'
-                      AND l.src_ip IS NOT NULL
-                      AND t.ip IS NULL
+                    SELECT DISTINCT host(ip) FROM (
+                        SELECT l.src_ip AS ip
+                        FROM logs l
+                        LEFT JOIN ip_threats t ON l.src_ip = t.ip
+                        WHERE l.threat_score IS NULL
+                          AND l.log_type = 'firewall'
+                          AND l.rule_action = 'block'
+                          AND l.src_ip IS NOT NULL
+                          AND t.ip IS NULL
+                        UNION
+                        SELECT l.dst_ip AS ip
+                        FROM logs l
+                        LEFT JOIN ip_threats t ON l.dst_ip = t.ip
+                        WHERE l.threat_score IS NULL
+                          AND l.log_type = 'firewall'
+                          AND l.rule_action = 'block'
+                          AND l.dst_ip IS NOT NULL
+                          AND t.ip IS NULL
+                    ) sub
                 """)
-                return [row[0] for row in cur.fetchall()]
+                return [row[0] for row in cur.fetchall()
+                        if is_public_ip(row[0])]

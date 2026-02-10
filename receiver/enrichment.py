@@ -313,7 +313,7 @@ class AbuseIPDBEnricher:
             params = {
                 'ipAddress': ip_str,
                 'maxAgeInDays': 90,
-                'verbose': '',
+                'verbose': 'true',
             }
             resp = requests.get(self.API_URL, headers=headers, params=params, timeout=5)
 
