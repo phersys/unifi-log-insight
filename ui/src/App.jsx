@@ -33,7 +33,14 @@ function formatAbuseIPDB(abuseipdb) {
   const remaining = abuseipdb.remaining
   if (limit == null || remaining == null) return '—'
   const used = limit - remaining
-  const reset = abuseipdb.reset_at ? formatShortDate(abuseipdb.reset_at) : '—'
+  // reset_at from AbuseIPDB is a Unix timestamp (seconds), not ISO string
+  let reset = '—'
+  if (abuseipdb.reset_at) {
+    const ts = Number(abuseipdb.reset_at)
+    const d = !isNaN(ts) && ts > 1e9 ? new Date(ts * 1000) : new Date(abuseipdb.reset_at)
+    reset = isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) +
+      ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  }
   return `${used.toLocaleString()}/${limit.toLocaleString()} · Reset ${reset}`
 }
 
