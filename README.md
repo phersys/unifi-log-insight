@@ -117,9 +117,12 @@ docker compose up -d --build
 ### Configure Your Unifi Router Syslog
 
 In your UniFi Network controller:
-1. Go to **Settings → System → Advanced**
-2. Enable **Remote Syslog**
-3. Set the syslog server to `<docker-host-ip>` on port `514`
+1. Go to **Settings → CyberSecure → Traffic Logging**
+2. Enable **Activity Logging (Syslog)**
+3. Under Contents, select Clients, Critical, Devices, Security Detections, Triggers, VPN, Firewall Default Policy.
+4. Set the syslog server to the `<docker-host-ip>` on port `514`
+5. Click Apply Changes.
+
 
 ### Open the UI
 
