@@ -17,7 +17,9 @@ import io
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
+from urllib.parse import unquote
 
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -604,16 +606,17 @@ def enrich_ip(ip: str):
     if not abuseipdb.enabled:
         raise HTTPException(status_code=400, detail="AbuseIPDB not configured")
 
-    if abuseipdb.remaining_budget <= 0:
-        # Read from stats file as fallback (receiver process may have budget info)
-        try:
-            with open('/tmp/abuseipdb_stats.json') as f:
-                stats = json.load(f)
-                remaining = stats.get('remaining', 0) or 0
-                if remaining <= 0:
-                    raise HTTPException(status_code=429, detail="No API budget remaining")
-        except FileNotFoundError:
-            raise HTTPException(status_code=429, detail="No API budget remaining")
+    # Budget check: use shared stats file as source of truth since the
+    # receiver process also consumes budget with a separate enricher instance.
+    try:
+        with open('/tmp/abuseipdb_stats.json') as f:
+            stats = json.load(f)
+            remaining = stats.get('remaining', 0) or 0
+            if remaining <= 20:  # match SAFETY_BUFFER
+                raise HTTPException(status_code=429, detail="No API budget remaining")
+    except FileNotFoundError:
+        # No stats yet — allow one call to bootstrap rate limit state
+        pass
 
     # Clear from memory cache
     abuseipdb.cache.delete(ip)
@@ -667,8 +670,13 @@ def enrich_ip(ip: str):
     return {
         'ip': ip,
         'threat_score': result.get('threat_score'),
+        'threat_categories': result.get('threat_categories', []),
         'abuse_usage_type': result.get('abuse_usage_type'),
-        'categories': result.get('threat_categories', []),
+        'abuse_hostnames': result.get('abuse_hostnames'),
+        'abuse_total_reports': result.get('abuse_total_reports'),
+        'abuse_last_reported': result.get('abuse_last_reported'),
+        'abuse_is_whitelisted': result.get('abuse_is_whitelisted'),
+        'abuse_is_tor': result.get('abuse_is_tor'),
         'logs_patched': logs_patched,
         'remaining_budget': abuseipdb.remaining_budget,
     }
@@ -683,14 +691,19 @@ if os.path.exists(STATIC_DIR):
     app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="assets")
 
     # SPA catch-all: serve index.html for any non-API route
+    _static_root = Path(STATIC_DIR).resolve()
+
     @app.get("/{path:path}")
     async def serve_spa(path: str):
-        # If the path matches a file in static dir, serve it
-        file_path = os.path.join(STATIC_DIR, path)
-        if path and os.path.isfile(file_path):
-            return FileResponse(file_path)
+        # URL-decode, resolve, and ensure the path stays inside STATIC_DIR
+        decoded = unquote(path)
+        resolved = (_static_root / decoded).resolve()
+        if resolved != _static_root and not str(resolved).startswith(str(_static_root) + os.sep):
+            return FileResponse(_static_root / "index.html")
+        if decoded and resolved.is_file():
+            return FileResponse(resolved)
         # Otherwise serve index.html for SPA routing
-        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+        return FileResponse(_static_root / "index.html")
 
     @app.get("/")
     async def serve_root():

@@ -36,11 +36,15 @@ export function formatNumber(n) {
 
 export function isPrivateIP(ip) {
   if (!ip) return true
-  return ip.startsWith('10.') || ip.startsWith('192.168.') ||
-    ip.startsWith('172.16.') || ip.startsWith('172.17.') ||
-    ip.startsWith('172.18.') || ip.startsWith('172.19.') ||
-    ip.startsWith('172.2') || ip.startsWith('172.3') ||
-    ip.startsWith('127.') || ip.startsWith('169.254.')
+  if (ip.startsWith('10.') || ip.startsWith('192.168.') ||
+      ip.startsWith('127.') || ip.startsWith('169.254.')) return true
+  // RFC1918 172.16.0.0/12 = 172.16.x.x – 172.31.x.x
+  const m = ip.match(/^172\.(\d+)\./)
+  if (m) {
+    const second = Number.parseInt(m[1], 10)
+    if (second >= 16 && second <= 31) return true
+  }
+  return false
 }
 
 export const LOG_TYPE_STYLES = {

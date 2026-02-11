@@ -56,8 +56,13 @@ export default function LogDetail({ log }) {
       const result = await enrichIP(enrichableIP)
       setEnrichedData({
         threat_score: result.threat_score,
-        threat_categories: result.categories,
+        threat_categories: result.threat_categories,
         abuse_usage_type: result.abuse_usage_type,
+        abuse_hostnames: result.abuse_hostnames,
+        abuse_total_reports: result.abuse_total_reports,
+        abuse_last_reported: result.abuse_last_reported,
+        abuse_is_whitelisted: result.abuse_is_whitelisted,
+        abuse_is_tor: result.abuse_is_tor,
       })
       setBudget(result.remaining_budget)
     } catch (err) {

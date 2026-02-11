@@ -80,13 +80,21 @@ MONTHS = {
 
 
 def parse_syslog_timestamp(month: str, day: str, time_str: str) -> datetime:
-    """Parse syslog timestamp. Syslog doesn't include year, so we use current year."""
+    """Parse syslog timestamp. Syslog doesn't include year, so we use current year.
+
+    Year-rollover guard: only subtract a year when the parsed month is
+    significantly ahead of the current month (e.g. a Dec log arriving in Jan).
+    A simple ``ts > now`` check is too aggressive — if the gateway clock is
+    even a few seconds ahead of the container clock, same-day logs get stamped
+    with the previous year.
+    """
     now = datetime.now(timezone.utc)
     month_num = MONTHS.get(month, 1)
     h, m, s = time_str.split(':')
     ts = now.replace(month=month_num, day=int(day), hour=int(h), minute=int(m), second=int(s), microsecond=0)
-    # Handle year rollover (Dec logs in January)
-    if ts > now:
+    # Handle year rollover: only when the log month is far ahead of now
+    # (e.g. log says December but we're in January → previous year's December)
+    if ts.month - now.month > 6:
         ts = ts.replace(year=ts.year - 1)
     return ts
 
