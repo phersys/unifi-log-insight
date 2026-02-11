@@ -48,16 +48,33 @@ Built for home network monitoring — runs as a single Docker container with zer
 
 ## Quick Start
 
-### 1. Clone the Repository
+### Option A — Pull Pre-built Image (recommended)
 
-```bash
-git clone https://github.com/jmasarweh/unifi-log-insight.git
-cd unifi-log-insight
+No cloning or building required. Create a directory anywhere and add two files:
+
+**`docker-compose.yml`**
+
+```yaml
+services:
+  unifi-log-insight:
+    image: ghcr.io/jmasarweh/unifi-log-insight:latest
+    container_name: unifi-log-insight
+    restart: unless-stopped
+    ports:
+      - "514:514/udp"
+      - "8090:8000"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./maxmind:/app/maxmind
+    env_file:
+      - .env
+
+volumes:
+  pgdata:
+    name: unifi-log-insight-pgdata
 ```
 
-### 2. Configure Environment
-
-Create a `.env` file in the project root:
+**`.env`**
 
 ```env
 # PostgreSQL (required)
@@ -74,30 +91,37 @@ MAXMIND_LICENSE_KEY=your_license_key
 TZ=Europe/London
 ```
 
-### 3. MaxMind Databases
-
-You have two options:
-
-**Option A — Auto-download (recommended):** Set `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` in `.env`. If no `.mmdb` files exist on first boot, the container downloads them automatically.
-
-**Option B — Manual download:** Download from your [MaxMind account](https://www.maxmind.com/en/accounts/current/geoip/downloads) and place in the `maxmind/` directory:
-- `GeoLite2-City.mmdb`
-- `GeoLite2-ASN.mmdb`
-
-### 4. Build and Run
+Then run:
 
 ```bash
+docker compose up -d
+```
+
+### Option B — Build from Source
+
+```bash
+git clone https://github.com/jmasarweh/unifi-log-insight.git
+cd unifi-log-insight
+# Create .env as shown above
 docker compose up -d --build
 ```
 
-### 5. Configure Your Unifi Router Syslog
+### MaxMind GeoIP Databases
+
+**Auto-download (recommended):** Set `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` in `.env`. If no `.mmdb` files exist on first boot, the container downloads them automatically.
+
+**Manual download:** Download from your [MaxMind account](https://www.maxmind.com/en/accounts/current/geoip/downloads) and place in the `maxmind/` directory:
+- `GeoLite2-City.mmdb`
+- `GeoLite2-ASN.mmdb`
+
+### Configure Your Unifi Router Syslog
 
 In your UniFi Network controller:
 1. Go to **Settings → System → Advanced**
 2. Enable **Remote Syslog**
 3. Set the syslog server to `<docker-host-ip>` on port `514`
 
-### 6. Open the UI
+### Open the UI
 
 Navigate to `http://<docker-host-ip>:8090`
 
@@ -303,6 +327,45 @@ The app includes full DNS query parsing, but **some Unifi Routers/Gateways do no
 - **Wait for Ubiquiti** — A future firmware update may expose a DNS logging toggle. The app will capture DNS logs automatically once the router starts emitting them.
 
 The dashboard includes a "Top DNS Queries" panel and the filter bar has a DNS type toggle — both will populate once DNS logs start flowing.
+
+---
+
+## Unraid Setup
+
+Install directly from Unraid's Docker UI — no terminal needed.
+
+1. Go to the **Docker** tab and click **Add Container**
+2. Set **Repository** to `ghcr.io/jmasarweh/unifi-log-insight:latest`
+3. Set **Name** to `unifi-log-insight`
+4. Add the following **Port Mappings**:
+
+   | Container Port | Host Port | Type |
+   |---|---|---|
+   | `514` | `514` | UDP |
+   | `8000` | `8090` | TCP |
+
+5. Add the following **Volume Mappings**:
+
+   | Container Path | Host Path | Purpose |
+   |---|---|---|
+   | `/var/lib/postgresql/data` | `/mnt/user/appdata/unifi-log-insight/pgdata` | Database storage |
+   | `/app/maxmind` | `/mnt/user/appdata/unifi-log-insight/maxmind` | GeoIP databases (auto-downloaded) |
+
+6. Add **Environment Variables**:
+
+   | Key | Value |
+   |---|---|
+   | `POSTGRES_PASSWORD` | *(your password)* |
+   | `TZ` | *(your timezone, e.g. `America/New_York`)* |
+   | `ABUSEIPDB_API_KEY` | *(optional — get free key at [abuseipdb.com](https://www.abuseipdb.com/register))* |
+   | `MAXMIND_ACCOUNT_ID` | *(optional — get free account at [maxmind.com](https://www.maxmind.com/en/geolite2/signup))* |
+   | `MAXMIND_LICENSE_KEY` | *(paired with account ID)* |
+
+7. Click **Apply** to start the container
+8. Open `http://<unraid-ip>:8090` and complete the Setup Wizard
+9. Configure your UniFi router's syslog to point at `<unraid-ip>:514`
+
+> **Updating:** Click the container's update icon in the Docker tab when a new version is available. Your database and configuration are preserved in the mapped volumes.
 
 ---
 
