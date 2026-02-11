@@ -1,6 +1,6 @@
 import React from 'react'
 import {
-  formatTime, getFlag, isPrivateIP, getInterfaceName,
+  formatTime, getFlag, isPrivateIP, getInterfaceName, getInterfaceColor,
   LOG_TYPE_STYLES, ACTION_STYLES,
   DIRECTION_ICONS, DIRECTION_COLORS, decodeThreatCategories,
 } from '../utils'
@@ -42,15 +42,9 @@ function NetworkPath({ ifaceIn, ifaceOut }) {
 
   if (!ifaceIn && !ifaceOut) return <span className="text-gray-700">—</span>
 
-  const colorMap = {
-    'Main': 'text-blue-400',
-    'IoT': 'text-amber-400',
-    'Hotspot': 'text-purple-400',
-    'WAN': 'text-red-400',
-  }
-
-  const colorIn = colorMap[nameIn] || 'text-gray-400'
-  const colorOut = colorMap[nameOut] || 'text-gray-400'
+  // Colors based on raw interface name, not label
+  const colorIn = getInterfaceColor(ifaceIn)
+  const colorOut = getInterfaceColor(ifaceOut)
 
   if (!ifaceOut) {
     return <span className={colorIn}>{nameIn}</span>

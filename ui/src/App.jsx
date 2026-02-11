@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import LogStream from './components/LogStream'
 import Dashboard from './components/Dashboard'
-import { fetchHealth } from './api'
+import SetupWizard from './components/SetupWizard'
+import { fetchHealth, fetchConfig } from './api'
+import { loadInterfaceLabels } from './utils'
 
 const TABS = [
   { id: 'logs', label: 'Log Stream' },
@@ -47,6 +49,37 @@ function formatAbuseIPDB(abuseipdb) {
 export default function App() {
   const [activeTab, setActiveTab] = useState('logs')
   const [health, setHealth] = useState(null)
+  const [showWizard, setShowWizard] = useState(false)
+  const [showReconfig, setShowReconfig] = useState(false)
+  const [config, setConfig] = useState(null)
+  const [configLoaded, setConfigLoaded] = useState(false)
+  const [showMigrationBanner, setShowMigrationBanner] = useState(false)
+
+  // Load config + interface labels in a single fetch
+  useEffect(() => {
+    let mounted = true
+    fetchConfig()
+      .then(cfg => {
+        if (!mounted) return
+        setConfig(cfg)
+        loadInterfaceLabels(cfg)
+        if (cfg.setup_complete === false) {
+          setShowWizard(true)
+        }
+        // Check for auto-migrated users (empty labels = defaults)
+        if (cfg.setup_complete !== false &&
+            Object.keys(cfg.interface_labels || {}).length === 0 &&
+            !localStorage.getItem('migration_banner_dismissed')) {
+          setShowMigrationBanner(true)
+        }
+        setConfigLoaded(true)
+      })
+      .catch(err => {
+        console.error('Config load failed:', err)
+        if (mounted) setConfigLoaded(true) // show app, not infinite loading
+      })
+    return () => { mounted = false }
+  }, [])
 
   useEffect(() => {
     fetchHealth().then(setHealth).catch(() => {})
@@ -56,8 +89,67 @@ export default function App() {
     return () => clearInterval(interval)
   }, [])
 
+  if (!configLoaded) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-950 text-gray-400 text-sm">
+        Loading configuration...
+      </div>
+    )
+  }
+
+  // Show setup wizard if not configured
+  if (showWizard) {
+    return <SetupWizard onComplete={() => {
+      fetchConfig().then(cfg => {
+        setConfig(cfg)
+        loadInterfaceLabels(cfg)
+      }).catch(() => {})
+      setShowWizard(false)
+    }} />
+  }
+
+  // Show reconfigure wizard as overlay
+  if (showReconfig) {
+    return <SetupWizard
+      reconfigMode
+      onComplete={() => {
+        fetchConfig().then(cfg => {
+          setConfig(cfg)
+          loadInterfaceLabels(cfg)
+        }).catch(() => {})
+        setShowReconfig(false)
+      }}
+      onCancel={() => setShowReconfig(false)}
+    />
+  }
+
   return (
     <div className="h-screen flex flex-col bg-gray-950">
+      {/* Migration banner */}
+      {showMigrationBanner && (
+        <div className="flex items-center justify-between px-4 py-2 bg-blue-500/10 border-b border-blue-500/30 text-xs text-blue-400">
+          <span>
+            Your network configuration was auto-detected with default settings. Click the
+            <button
+              onClick={() => { setShowMigrationBanner(false); setShowReconfig(true) }}
+              className="underline mx-1 hover:text-blue-300"
+            >
+              Settings
+            </button>
+            gear to review and customize interface labels.
+          </span>
+          <button
+            onClick={() => {
+              setShowMigrationBanner(false)
+              localStorage.setItem('migration_banner_dismissed', '1')
+            }}
+            className="text-blue-400 hover:text-blue-300 ml-4"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-900/50 shrink-0">
         <div className="flex items-center gap-4">
@@ -87,7 +179,7 @@ export default function App() {
           </nav>
         </div>
 
-        {/* Status */}
+        {/* Status + Settings gear */}
         <div className="flex items-center gap-3">
           {health && (
             <>
@@ -111,6 +203,15 @@ export default function App() {
               }`} />
             </>
           )}
+          <button
+            onClick={() => setShowReconfig(true)}
+            className="ml-2 p-1.5 rounded hover:bg-gray-800 text-gray-500 hover:text-gray-300 transition-colors"
+            title="Network Settings"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path fillRule="evenodd" d="M7.84 1.804A1 1 0 0 1 8.82 1h2.36a1 1 0 0 1 .98.804l.331 1.652a6.993 6.993 0 0 1 1.929 1.115l1.598-.54a1 1 0 0 1 1.186.447l1.18 2.044a1 1 0 0 1-.205 1.251l-1.267 1.113a7.047 7.047 0 0 1 0 2.228l1.267 1.113a1 1 0 0 1 .206 1.25l-1.18 2.045a1 1 0 0 1-1.187.447l-1.598-.54a6.993 6.993 0 0 1-1.929 1.115l-.33 1.652a1 1 0 0 1-.98.804H8.82a1 1 0 0 1-.98-.804l-.331-1.652a6.993 6.993 0 0 1-1.929-1.115l-1.598.54a1 1 0 0 1-1.186-.447l-1.18-2.044a1 1 0 0 1 .205-1.251l1.267-1.114a7.05 7.05 0 0 1 0-2.227L1.821 7.773a1 1 0 0 1-.206-1.25l1.18-2.045a1 1 0 0 1 1.187-.447l1.598.54A6.992 6.992 0 0 1 7.51 3.456l.33-1.652ZM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clipRule="evenodd" />
+            </svg>
+          </button>
         </div>
       </header>
 

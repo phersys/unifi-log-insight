@@ -16,6 +16,8 @@ import csv
 import io
 import json
 import logging
+import subprocess
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -30,7 +32,7 @@ from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
 from parsers import get_wan_ip
-from db import Database
+from db import Database, get_config, set_config, count_logs
 from enrichment import AbuseIPDBEnricher, is_public_ip
 
 logging.basicConfig(
@@ -112,6 +114,7 @@ def build_log_query(
     threat_min: Optional[int],
     search: Optional[str],
     service: Optional[str],
+    interface: Optional[str],
 ) -> tuple[str, list]:
     """Build WHERE clause and params from filters."""
     conditions = []
@@ -185,11 +188,254 @@ def build_log_query(
         conditions.append(f"service_name IN ({placeholders})")
         params.extend(services)
 
+    if interface:
+        ifaces = [i.strip() for i in interface.split(',')]
+        placeholders = ','.join(['%s'] * len(ifaces))
+        conditions.append(f"(interface_in IN ({placeholders}) OR interface_out IN ({placeholders}))")
+        params.extend(ifaces)
+        params.extend(ifaces)  # Twice: once for interface_in, once for interface_out
+
     where = " AND ".join(conditions) if conditions else "1=1"
     return where, params
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+# ── Setup Wizard & Config Endpoints ──────────────────────────────────────────
+
+@app.get("/api/config")
+def get_current_config():
+    """Return current system configuration."""
+    return {
+        "wan_interfaces": get_config(enricher_db, "wan_interfaces", ["ppp0"]),
+        "interface_labels": get_config(enricher_db, "interface_labels", {}),
+        "setup_complete": get_config(enricher_db, "setup_complete", False),
+        "config_version": get_config(enricher_db, "config_version", 1),
+    }
+
+
+@app.get("/api/setup/status")
+def setup_status():
+    """Check if setup wizard is complete."""
+    return {
+        "setup_complete": get_config(enricher_db, "setup_complete", False),
+        "logs_count": count_logs(enricher_db, 'firewall'),
+    }
+
+
+@app.get("/api/setup/wan-candidates")
+def wan_candidates():
+    """Return non-bridge firewall interfaces with their associated WAN IP."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # For each interface_in, find the most common public dst_ip
+            # (this is the IP assigned to the interface — the WAN IP)
+            cur.execute("""
+                SELECT
+                    interface_in AS interface,
+                    COUNT(*)     AS event_count,
+                    MODE() WITHIN GROUP (ORDER BY host(dst_ip)) FILTER (
+                        WHERE dst_ip IS NOT NULL
+                        AND NOT (dst_ip << '10.0.0.0/8'::inet
+                              OR dst_ip << '172.16.0.0/12'::inet
+                              OR dst_ip << '192.168.0.0/16'::inet
+                              OR dst_ip << '127.0.0.0/8'::inet
+                              OR host(dst_ip) = '255.255.255.255')
+                    ) AS wan_ip
+                FROM logs
+                WHERE log_type = 'firewall'
+                  AND interface_in IS NOT NULL
+                  AND interface_in NOT LIKE 'br%'
+                GROUP BY interface_in
+                ORDER BY event_count DESC
+            """)
+            candidates = cur.fetchall()
+    finally:
+        put_conn(conn)
+
+    for c in candidates:
+        c['event_count'] = int(c['event_count'])
+        c['wan_ip'] = c['wan_ip'] or ''
+
+    return {
+        'candidates': candidates,
+    }
+
+
+@app.get("/api/setup/network-segments")
+def network_segments(wan_interfaces: str = None):
+    """Discover ALL network interfaces with sample local IPs and suggested labels.
+
+    wan_interfaces: comma-separated list from Step 1. Auto-labelled WAN/WAN1/WAN2.
+    """
+    wan_list = wan_interfaces.split(',') if wan_interfaces else []
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get ALL interfaces with sample local IPs (no exclusions)
+            cur.execute("""
+                WITH interface_ips AS (
+                    SELECT interface_in as iface, src_ip
+                    FROM logs
+                    WHERE log_type = 'firewall'
+                      AND interface_in IS NOT NULL
+                      AND (src_ip << '10.0.0.0/8'::inet
+                           OR src_ip << '172.16.0.0/12'::inet
+                           OR src_ip << '192.168.0.0/16'::inet)
+                    UNION
+                    SELECT interface_out as iface, dst_ip as src_ip
+                    FROM logs
+                    WHERE log_type = 'firewall'
+                      AND interface_out IS NOT NULL
+                      AND (dst_ip << '10.0.0.0/8'::inet
+                           OR dst_ip << '172.16.0.0/12'::inet
+                           OR dst_ip << '192.168.0.0/16'::inet)
+                )
+                SELECT
+                    iface,
+                    ARRAY_AGG(DISTINCT host(src_ip) ORDER BY host(src_ip)) as sample_ips
+                FROM interface_ips
+                GROUP BY iface
+                ORDER BY iface
+                LIMIT 30
+            """)
+            interfaces = cur.fetchall()
+    finally:
+        put_conn(conn)
+
+    # For WAN interfaces, fetch their public IP instead of a local IP
+    wan_ips = {}
+    if wan_list:
+        conn2 = get_conn()
+        try:
+            with conn2.cursor(cursor_factory=RealDictCursor) as cur:
+                placeholders = ','.join(['%s'] * len(wan_list))
+                cur.execute(f"""
+                    SELECT interface_in AS iface,
+                           MODE() WITHIN GROUP (ORDER BY host(dst_ip)) FILTER (
+                               WHERE dst_ip IS NOT NULL
+                               AND NOT (dst_ip << '10.0.0.0/8'::inet
+                                     OR dst_ip << '172.16.0.0/12'::inet
+                                     OR dst_ip << '192.168.0.0/16'::inet
+                                     OR dst_ip << '127.0.0.0/8'::inet
+                                     OR host(dst_ip) = '255.255.255.255')
+                           ) AS wan_ip
+                    FROM logs
+                    WHERE log_type = 'firewall'
+                      AND interface_in IN ({placeholders})
+                    GROUP BY interface_in
+                """, wan_list)
+                for row in cur.fetchall():
+                    wan_ips[row['iface']] = row['wan_ip'] or ''
+        except Exception:
+            pass
+        finally:
+            put_conn(conn2)
+
+    # Generate suggested labels
+    segments = []
+    for row in interfaces:
+        iface = row['iface']
+        ips = row['sample_ips'] or []
+        is_wan = iface in wan_list
+
+        # WAN interfaces auto-labelled from Step 1
+        if is_wan:
+            if len(wan_list) == 1:
+                suggested = 'WAN'
+            else:
+                suggested = f'WAN{wan_list.index(iface) + 1}'
+            # Show WAN IP, not a random local IP
+            display_ip = wan_ips.get(iface, '')
+        elif iface == 'br0':
+            suggested = 'Main LAN'
+            display_ip = ips[0] if ips else ''
+        elif iface.startswith('br'):
+            num = iface[2:]
+            suggested = f'VLAN {num}' if num.isdigit() else iface
+            display_ip = ips[0] if ips else ''
+        elif iface.startswith('vlan'):
+            num = iface[4:]
+            suggested = f'VLAN {num}' if num.isdigit() else iface
+            display_ip = ips[0] if ips else ''
+        elif iface.startswith('eth'):
+            num = iface[3:]
+            suggested = f'Ethernet {num}' if num.isdigit() else iface
+            display_ip = ips[0] if ips else ''
+        else:
+            suggested = ''
+            display_ip = ips[0] if ips else ''
+
+        segments.append({
+            'interface': iface,
+            'sample_local_ip': display_ip,
+            'suggested_label': suggested,
+            'is_wan': is_wan,
+        })
+
+    return {'segments': segments}
+
+
+@app.post("/api/setup/complete")
+def complete_setup(body: dict):
+    """Save wizard configuration and trigger receiver reload."""
+    if not body.get('wan_interfaces'):
+        raise HTTPException(status_code=400, detail="wan_interfaces required")
+
+    set_config(enricher_db, "wan_interfaces", body["wan_interfaces"])
+    set_config(enricher_db, "interface_labels", body.get("interface_labels", {}))
+    set_config(enricher_db, "setup_complete", True)
+    set_config(enricher_db, "config_version", 1)
+
+    # Trigger direction backfill if WAN changed from default
+    wan_set = set(body["wan_interfaces"])
+    if wan_set != {'ppp0'}:
+        set_config(enricher_db, "direction_backfill_pending", True)
+
+    # Signal receiver process to reload config
+    try:
+        subprocess.run(['pkill', '-SIGUSR2', '-f', 'receiver/main.py'],
+                      check=False, timeout=2)
+        with open('/tmp/config_update_requested', 'w') as f:
+            f.write(str(time.time()))
+        logger.info("Signaled receiver process to reload config")
+    except Exception as e:
+        logger.warning("Failed to signal receiver: %s", e)
+
+    return {"success": True}
+
+
+@app.get("/api/interfaces")
+def list_interfaces():
+    """Return all discovered interfaces with their labels."""
+    labels = get_config(enricher_db, "interface_labels", {})
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT unnest(ARRAY[interface_in, interface_out]) as iface
+                FROM logs
+                WHERE log_type = 'firewall'
+                  AND (interface_in IS NOT NULL OR interface_out IS NOT NULL)
+            """)
+            interfaces = [row[0] for row in cur.fetchall() if row[0]]
+    finally:
+        put_conn(conn)
+
+    result = []
+    for iface in sorted(interfaces):
+        result.append({
+            'name': iface,
+            'label': labels.get(iface, iface)
+        })
+
+    return {'interfaces': result}
+
+
+# ── Original Log Endpoints ────────────────────────────────────────────────────
 
 @app.get("/api/logs")
 def get_logs(
@@ -207,6 +453,7 @@ def get_logs(
     threat_min: Optional[int] = Query(None, description="Minimum threat score"),
     search: Optional[str] = Query(None, description="Full-text search in raw_log"),
     service: Optional[str] = Query(None, description="Comma-separated service names"),
+    interface: Optional[str] = Query(None, description="Comma-separated interface names"),
     sort: str = Query("timestamp", description="Sort field"),
     order: str = Query("desc", description="asc or desc"),
     page: int = Query(1, ge=1),
@@ -216,6 +463,7 @@ def get_logs(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,
         rule_name, country, threat_min, search, service,
+        interface,
     )
 
     # Whitelist sort columns
@@ -493,12 +741,14 @@ def export_csv(
     country: Optional[str] = Query(None),
     threat_min: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    service: Optional[str] = Query(None),
+    interface: Optional[str] = Query(None),
     limit: int = Query(10000, ge=1, le=100000),
 ):
     where, params = build_log_query(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,
-        rule_name, country, threat_min, search, service,
+        rule_name, country, threat_min, search, service, interface,
     )
 
     export_columns = [

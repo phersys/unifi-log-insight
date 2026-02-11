@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { fetchServices } from '../api'
+import { fetchServices, fetchInterfaces } from '../api'
+import { getInterfaceName } from '../utils'
 
 const LOG_TYPES = ['firewall', 'dns', 'dhcp', 'wifi', 'system']
 const TIME_RANGES = [
@@ -22,10 +23,21 @@ export default function FilterBar({ filters, onChange }) {
   const [selectedServices, setSelectedServices] = useState(
     filters.service ? filters.service.split(',') : []
   )
+  const [interfaceSearch, setInterfaceSearch] = useState('')
+  const [interfaces, setInterfaces] = useState([])
+  const [showInterfaceDropdown, setShowInterfaceDropdown] = useState(false)
+  const [selectedInterfaces, setSelectedInterfaces] = useState(
+    filters.interface ? filters.interface.split(',') : []
+  )
 
   // Load services for autocomplete
   useEffect(() => {
     fetchServices().then(data => setServices(data.services || []))
+  }, [])
+
+  // Load interfaces for filtering
+  useEffect(() => {
+    fetchInterfaces().then(data => setInterfaces(data.interfaces || []))
   }, [])
 
   // Debounce text inputs
@@ -228,6 +240,70 @@ export default function FilterBar({ filters, onChange }) {
             </div>
           )}
         </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder={selectedInterfaces.length > 0 ? `${selectedInterfaces.length} interface(s)` : "Interface..."}
+            value={interfaceSearch}
+            onChange={e => {
+              setInterfaceSearch(e.target.value)
+              setShowInterfaceDropdown(true)
+            }}
+            onFocus={() => setShowInterfaceDropdown(true)}
+            onBlur={() => setTimeout(() => setShowInterfaceDropdown(false), 200)}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-gray-500 w-40"
+          />
+          {selectedInterfaces.length > 0 && (
+            <button
+              onClick={() => {
+                setSelectedInterfaces([])
+                onChange({ ...filters, interface: null })
+              }}
+              className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300 text-xs"
+            >✕</button>
+          )}
+          {showInterfaceDropdown && (
+            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-800 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-10">
+              {interfaces
+                .filter(iface =>
+                  iface.name.toLowerCase().includes(interfaceSearch.toLowerCase()) ||
+                  iface.label.toLowerCase().includes(interfaceSearch.toLowerCase())
+                )
+                .slice(0, 50)
+                .map(iface => (
+                  <div
+                    key={iface.name}
+                    onClick={() => {
+                      const updated = selectedInterfaces.includes(iface.name)
+                        ? selectedInterfaces.filter(i => i !== iface.name)
+                        : [...selectedInterfaces, iface.name]
+                      setSelectedInterfaces(updated)
+                      onChange({ ...filters, interface: updated.length ? updated.join(',') : null })
+                      setInterfaceSearch('')
+                    }}
+                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                      selectedInterfaces.includes(iface.name)
+                        ? 'bg-blue-500/20 text-blue-400'
+                        : 'text-gray-300 hover:bg-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono">{iface.name}</span>
+                      {iface.label !== iface.name && (
+                        <span className="text-gray-500 ml-2">{iface.label}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              {interfaces.filter(iface =>
+                iface.name.toLowerCase().includes(interfaceSearch.toLowerCase()) ||
+                iface.label.toLowerCase().includes(interfaceSearch.toLowerCase())
+              ).length === 0 && (
+                <div className="px-3 py-2 text-xs text-gray-500">No matching interfaces</div>
+              )}
+            </div>
+          )}
+        </div>
         <div className="relative flex-1 max-w-xs">
           <input
             type="text"
@@ -247,6 +323,8 @@ export default function FilterBar({ filters, onChange }) {
             setTextSearch('')
             setServiceSearch('')
             setSelectedServices([])
+            setInterfaceSearch('')
+            setSelectedInterfaces([])
             onChange({ time_range: '24h', page: 1, per_page: 50 })
           }}
           className="text-xs text-gray-500 hover:text-gray-300 transition-colors"

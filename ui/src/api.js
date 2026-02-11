@@ -56,3 +56,40 @@ export function getExportUrl(params = {}) {
   }
   return `${BASE}/export?${qs}`
 }
+
+// ── Setup Wizard API ──────────────────────────────────────────────────────────
+
+export async function fetchConfig() {
+  const resp = await fetch(`${BASE}/config`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchWANCandidates() {
+  const resp = await fetch(`${BASE}/setup/wan-candidates`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchNetworkSegments(wanInterfaces = []) {
+  const qs = wanInterfaces.length ? `?wan_interfaces=${wanInterfaces.join(',')}` : ''
+  const resp = await fetch(`${BASE}/setup/network-segments${qs}`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function saveSetupConfig(config) {
+  const resp = await fetch(`${BASE}/setup/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchInterfaces() {
+  const resp = await fetch(`${BASE}/interfaces`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}

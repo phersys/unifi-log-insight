@@ -67,13 +67,9 @@ DHCP_REQ     = re.compile(r'DHCPREQUEST\((\S+)\)\s+([0-9.]+)\s+([0-9a-f:]+)')
 WIFI_EVENT  = re.compile(r'(\w+):\s+STA\s+([0-9a-f:]+)')
 WIFI_ASSOC  = re.compile(r'STA\s+([0-9a-f:]+)\s+.*?(associated|disassociated|deauthenticated|authenticated)')
 
-# ── Interface → network mapping example - customize for your setup───────────────────────────────────────────────
-INTERFACE_MAP = {
-    'br0':  'Main',      # VLAN 1  - 10.10.10.0/24
-    'br20': 'IoT',       # VLAN 20 - 10.10.20.0/24
-    'br40': 'Hotspot',   # VLAN 40 - 10.10.40.0/28
-    'ppp0': 'WAN',
-}
+# Module-level config (set by main.py after DB initialization)
+WAN_INTERFACES = {'ppp0'}  # Default fallback
+INTERFACE_LABELS = {}  # Default to empty (raw names)
 
 MONTHS = {
     'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
@@ -108,8 +104,8 @@ def derive_direction(iface_in: str, iface_out: str, rule_name: str, src_ip: str 
     if not iface_in and not iface_out:
         return None
 
-    # Auto-learn WAN IP from WAN_LOCAL rules (IN=ppp0, public DST)
-    if iface_in == 'ppp0' and 'WAN_LOCAL' in (rule_name or '') and dst_ip:
+    # Auto-learn WAN IP from WAN_LOCAL rules (IN=WAN interface, public DST)
+    if iface_in in WAN_INTERFACES and 'WAN_LOCAL' in (rule_name or '') and dst_ip:
         try:
             ip = ipaddress.ip_address(dst_ip)
             if ip.is_global and not ip.is_multicast and str(ip) != _wan_ip:
@@ -130,13 +126,13 @@ def derive_direction(iface_in: str, iface_out: str, rule_name: str, src_ip: str 
     if 'DNAT' in (rule_name or '') or 'PREROUTING' in (rule_name or ''):
         return 'nat'
 
-    is_wan_in = iface_in == 'ppp0'
+    is_wan_in = iface_in in WAN_INTERFACES
 
     # No OUT interface = traffic destined to the router itself
     if not iface_out:
         return 'inbound' if is_wan_in else 'local'
 
-    is_wan_out = iface_out == 'ppp0'
+    is_wan_out = iface_out in WAN_INTERFACES
 
     if is_wan_in and not is_wan_out:
         return 'inbound'
@@ -408,3 +404,18 @@ def parse_log(raw_log: str) -> dict | None:
                 parsed[ip_field] = None
 
     return parsed
+
+
+def reload_config_from_db(db):
+    """Reload WAN interfaces and labels from system_config table.
+
+    Called by main.py on startup and via SIGUSR2 signal after reconfiguration.
+    Updates module-level WAN_INTERFACES and INTERFACE_LABELS.
+    """
+    global WAN_INTERFACES, INTERFACE_LABELS
+    from db import get_config
+
+    wan_list = get_config(db, 'wan_interfaces', ['ppp0'])
+    WAN_INTERFACES = set(wan_list)
+    INTERFACE_LABELS = get_config(db, 'interface_labels', {})
+    logger.info("Config reloaded: WAN=%s, Labels=%d", WAN_INTERFACES, len(INTERFACE_LABELS))
