@@ -5,11 +5,13 @@ Handles PostgreSQL connection pooling, log insertion, and retention cleanup.
 """
 
 import os
+import json
 import logging
 from contextlib import contextmanager
 
 import psycopg2
 from psycopg2 import pool, extras
+from psycopg2.extras import Json
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +93,12 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_logs_service_name ON logs (service_name) WHERE service_name IS NOT NULL",
             # Normalize protocol to lowercase for index optimization
             "UPDATE logs SET protocol = LOWER(protocol) WHERE protocol IS NOT NULL AND protocol != LOWER(protocol)",
+            # System configuration table for dynamic settings
+            """CREATE TABLE IF NOT EXISTS system_config (
+                key TEXT PRIMARY KEY,
+                value JSONB NOT NULL,
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )""",
         ]
         try:
             with self.get_conn() as conn:
@@ -287,3 +295,51 @@ class Database:
         except Exception as e:
             logger.error("Bulk upsert failed: %s", e)
             return 0
+
+    # ── System configuration ──────────────────────────────────────────────────
+
+    def get_config(self, key: str, default=None):
+        """Fetch a config value from system_config table.
+
+        Returns the JSONB value as a Python object (dict/list/etc).
+        Returns default if key doesn't exist.
+        """
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT value FROM system_config WHERE key = %s", [key])
+                row = cur.fetchone()
+                return row[0] if row else default
+
+    def set_config(self, key: str, value):
+        """Upsert a config value to system_config table.
+
+        Value is automatically converted to JSONB.
+        """
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO system_config (key, value, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (key) DO UPDATE
+                    SET value = EXCLUDED.value, updated_at = NOW()
+                """, [key, Json(value)])  # Use Json() for proper JSONB handling
+
+
+# ── Standalone helper functions ───────────────────────────────────────────────
+
+def get_config(db, key: str, default=None):
+    """Standalone helper: fetch config using Database instance."""
+    return db.get_config(key, default)
+
+
+def set_config(db, key: str, value):
+    """Standalone helper: set config using Database instance."""
+    return db.set_config(key, value)
+
+
+def count_logs(db, log_type='firewall'):
+    """Count logs by type."""
+    with db.get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM logs WHERE log_type = %s", [log_type])
+            return cur.fetchone()[0]

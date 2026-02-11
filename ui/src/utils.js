@@ -76,16 +76,63 @@ export const DIRECTION_ICONS = {
   local: '⟳',
 }
 
-export const INTERFACE_NAMES = {
-  'br0': 'Main',
-  'br20': 'IoT',
-  'br40': 'Hotspot',
-  'ppp0': 'WAN',
+// Module-level variables (populated on app load via loadInterfaceLabels)
+let INTERFACE_LABELS = {}
+let WAN_INTERFACES = new Set()
+
+// Deterministic color palette keyed by raw interface name, not label.
+// WAN interfaces always get red; bridge interfaces use a fixed map.
+const BRIDGE_COLOR_MAP = {
+  0:  'text-blue-400',
+  10: 'text-blue-400',
+  20: 'text-amber-400',
+  30: 'text-purple-400',
+  40: 'text-teal-400',
+  50: 'text-pink-400',
+  60: 'text-orange-400',
+  70: 'text-lime-400',
+  80: 'text-cyan-400',
+  90: 'text-indigo-400',
+  100: 'text-rose-400',
+}
+
+export async function loadInterfaceLabels(prefetchedConfig) {
+  try {
+    const config = prefetchedConfig || await (await fetch('/api/config')).json()
+    INTERFACE_LABELS = config.interface_labels || {}
+    WAN_INTERFACES = new Set(config.wan_interfaces || [])
+  } catch (err) {
+    console.warn('Failed to load interface labels, using raw names:', err)
+    INTERFACE_LABELS = {}
+    WAN_INTERFACES = new Set()
+  }
 }
 
 export function getInterfaceName(iface) {
   if (!iface) return '—'
-  return INTERFACE_NAMES[iface] || iface
+  return INTERFACE_LABELS[iface] || iface
+}
+
+export function getInterfaceColor(iface) {
+  if (!iface) return 'text-gray-400'
+
+  // WAN interfaces → always red
+  if (WAN_INTERFACES.has(iface)) return 'text-red-400'
+
+  // Bridge interfaces → fixed color per VLAN number
+  if (iface.startsWith('br')) {
+    const num = parseInt(iface.slice(2), 10)
+    if (isNaN(num)) return 'text-gray-400'
+    return BRIDGE_COLOR_MAP[num] || 'text-gray-400'
+  }
+
+  // VLAN interfaces
+  if (iface.startsWith('vlan')) return 'text-indigo-400'
+
+  // Ethernet interfaces
+  if (iface.startsWith('eth')) return 'text-gray-400'
+
+  return 'text-gray-400'
 }
 
 export const DIRECTION_COLORS = {

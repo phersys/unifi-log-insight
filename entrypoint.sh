@@ -24,6 +24,9 @@ if [ ! -s "$PGDATA/PG_VERSION" ]; then
     su - postgres -c "psql -d unifi_logs -c \"ALTER TABLE ip_threats OWNER TO unifi;\""
     su - postgres -c "psql -d unifi_logs -c \"ALTER SEQUENCE logs_id_seq OWNER TO unifi;\""
 
+    # Defensive: transfer system_config ownership if it exists (normally created by app)
+    su - postgres -c "psql -d unifi_logs -c \"DO \\\$\\\$ BEGIN IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename='system_config') THEN ALTER TABLE system_config OWNER TO unifi; END IF; END \\\$\\\$;\""
+
     # Configure PostgreSQL to accept connections from the app
     echo "host all all 127.0.0.1/32 md5" >> "$PGDATA/pg_hba.conf"
     echo "local all all trust" >> "$PGDATA/pg_hba.conf"

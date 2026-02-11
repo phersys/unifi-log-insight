@@ -16,6 +16,8 @@ import time
 import logging
 import threading
 
+from psycopg2 import extras
+
 from enrichment import is_public_ip
 from services import get_service_mappings
 
@@ -59,10 +61,13 @@ class BackfillTask:
 
     def _run_once(self):
         """Execute one backfill cycle."""
-        # Step 0: Patch NULL service_name rows for historical firewall logs
+        # Step 0: Re-derive direction for firewall logs (if WAN interfaces changed)
+        direction_backfilled = self._backfill_direction()
+
+        # Step 1: Patch NULL service_name rows for historical firewall logs
         patched_services = self._patch_service_names()
 
-        # Step 1: Patch NULL-scored rows from ip_threats cache
+        # Step 2: Patch NULL-scored rows from ip_threats cache
         patched_null = self._patch_from_cache()
 
         # Step 2: Patch logs that have scores but missing abuse detail fields
@@ -114,6 +119,69 @@ class BackfillTask:
             )
         else:
             logger.info("Backfill: nothing to do")
+
+    def _backfill_direction(self) -> int:
+        """Re-derive direction for firewall logs when WAN interfaces change.
+
+        Only processes firewall logs (direction is derived from iptables interfaces).
+        Uses ID-cursor batching for optimal performance (avoids OFFSET scan overhead).
+        Returns number of rows updated.
+        """
+        import parsers
+        from db import get_config, set_config
+
+        # Check if backfill is needed
+        if not get_config(self.db, 'direction_backfill_pending', False):
+            return 0
+
+        logger.info("Starting direction backfill...")
+
+        total_updated = 0
+        batch_size = 500
+        last_id = 0
+
+        while True:
+            # Fetch batch using ID cursor (faster than OFFSET on large tables)
+            with self.db.get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT id, interface_in, interface_out, rule_name,
+                               src_ip::text, dst_ip::text
+                        FROM logs
+                        WHERE log_type = 'firewall' AND id > %s
+                        ORDER BY id
+                        LIMIT %s
+                    """, [last_id, batch_size])
+                    rows = cur.fetchall()
+
+            if not rows:
+                break
+
+            # Re-derive directions using current WAN_INTERFACES
+            updates = []
+            for row in rows:
+                id_val, iface_in, iface_out, rule_name, src_ip, dst_ip = row
+                new_direction = parsers.derive_direction(
+                    iface_in, iface_out, rule_name, src_ip, dst_ip
+                )
+                updates.append((new_direction, id_val))
+                last_id = id_val
+
+            # Batch update
+            with self.db.get_conn() as conn:
+                with conn.cursor() as cur:
+                    extras.execute_batch(cur,
+                        "UPDATE logs SET direction = %s WHERE id = %s",
+                        updates, page_size=500
+                    )
+
+            total_updated += len(updates)
+            logger.info("Direction backfill progress: %d logs updated", total_updated)
+
+        # Clear the pending flag
+        set_config(self.db, 'direction_backfill_pending', False)
+        logger.info("Direction backfill complete: %d total logs updated", total_updated)
+        return total_updated
 
     def _patch_from_cache(self) -> int:
         """Update NULL threat_score log rows from ip_threats table.

@@ -20,7 +20,8 @@ from collections import deque
 import schedule
 
 from parsers import parse_log
-from db import Database
+import parsers
+from db import Database, get_config, set_config
 from enrichment import Enricher
 from backfill import BackfillTask
 from blacklist import BlacklistFetcher
@@ -234,6 +235,38 @@ def main():
     db = Database(conn_params)
     db.connect()
 
+    # Load system configuration and apply to parsers module
+    # Check for existing user migration
+    setup_complete = get_config(db, "setup_complete", None)
+    if setup_complete is None:
+        # Count firewall logs to detect existing installation
+        with db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM logs WHERE log_type = 'firewall'")
+                log_count = cur.fetchone()[0]
+
+        if log_count > 0:
+            # Auto-migrate existing installation with safe defaults
+            logger.info("Migrating existing installation to dynamic config...")
+            set_config(db, "wan_interfaces", ["ppp0"])
+            set_config(db, "interface_labels", {})  # Empty = use raw names
+            set_config(db, "setup_complete", True)
+            set_config(db, "config_version", 1)
+            logger.info(
+                "Migration complete with safe defaults (WAN=ppp0, labels=raw names). "
+                "Users can customize via Settings → Reconfigure."
+            )
+
+    # Load config into parsers module
+    parsers.reload_config_from_db(db)
+    logger.info("Loaded config: WAN interfaces = %s", parsers.WAN_INTERFACES)
+
+    # Check config version for future migrations
+    current_version = get_config(db, 'config_version', 0)
+    if current_version < 1:
+        # Future: handle config schema migrations
+        pass
+
     # Initialize enrichment
     enricher = Enricher(db=db)
 
@@ -253,9 +286,25 @@ def main():
         logger.info("Received SIGUSR1, reloading GeoIP databases...")
         enricher.reload_geoip()
 
+    # Handle config reload
+    def reload_config(signum, frame):
+        """Reload config from database when signaled by API process."""
+        logger.info("Received SIGUSR2, reloading config from database...")
+        parsers.reload_config_from_db(db)
+
+        # Write timestamp to confirm reload completed
+        try:
+            from pathlib import Path
+            Path('/tmp/config_reloaded').write_text(str(time.time()))
+        except Exception as e:
+            logger.debug("Failed to write reload timestamp: %s", e)
+
+        logger.info("Config reloaded: WAN=%s", parsers.WAN_INTERFACES)
+
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGUSR1, reload_geoip)
+    signal.signal(signal.SIGUSR2, reload_config)
 
     # Start scheduler in background thread
     blacklist_fetcher = BlacklistFetcher(db)
