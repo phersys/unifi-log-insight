@@ -40,7 +40,7 @@ Built for home network monitoring — runs as a single Docker container with zer
 ## Prerequisites
 
 - **Docker** and **Docker Compose** on the host machine
-- **UniFi Dream Router** (or any UniFi gateway that supports remote syslog)
+- **UniFi Router** (or any UniFi gateway that supports remote syslog)
 - **MaxMind GeoLite2 account** (free) — for GeoIP/ASN lookups
 - **AbuseIPDB API key** (free tier, optional) — for threat scoring on blocked IPs
 

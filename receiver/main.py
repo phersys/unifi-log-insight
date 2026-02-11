@@ -68,13 +68,14 @@ class SyslogReceiver:
 
     def start(self):
         """Start the UDP listener."""
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        self.sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)  # dual-stack: accept IPv4 + IPv6
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # Set receive buffer to 1MB to handle bursts
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
 
-        self.sock.bind(('0.0.0.0', SYSLOG_PORT))
+        self.sock.bind(('::', SYSLOG_PORT))
         self.sock.settimeout(1.0)  # Allow periodic batch flushing
         self.running = True
 

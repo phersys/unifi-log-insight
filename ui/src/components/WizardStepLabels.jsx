@@ -3,6 +3,16 @@ import { fetchNetworkSegments } from '../api'
 
 function isLocalIP(ip) {
   if (!ip) return false
+  // IPv6 private/reserved ranges
+  if (ip.includes(':')) {
+    const lower = ip.toLowerCase()
+    if (lower === '::1' || lower === '::') return true
+    if (lower.startsWith('fc') || lower.startsWith('fd')) return true
+    if (lower.startsWith('fe80')) return true
+    if (lower.startsWith('ff')) return true
+    return false
+  }
+  // IPv4
   const parts = ip.split('.').map(Number)
   if (parts.length !== 4 || parts.some(p => isNaN(p))) return false
   const [a, b] = parts

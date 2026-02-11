@@ -36,6 +36,16 @@ export function formatNumber(n) {
 
 export function isPrivateIP(ip) {
   if (!ip) return true
+  // IPv6 private/reserved ranges
+  if (ip.includes(':')) {
+    const lower = ip.toLowerCase()
+    if (lower === '::1' || lower === '::') return true          // loopback / unspecified
+    if (lower.startsWith('fc') || lower.startsWith('fd')) return true  // ULA (fc00::/7)
+    if (lower.startsWith('fe80')) return true                   // link-local
+    if (lower.startsWith('ff')) return true                     // multicast
+    return false
+  }
+  // IPv4 private ranges
   if (ip.startsWith('10.') || ip.startsWith('192.168.') ||
       ip.startsWith('127.') || ip.startsWith('169.254.')) return true
   // RFC1918 172.16.0.0/12 = 172.16.x.x – 172.31.x.x

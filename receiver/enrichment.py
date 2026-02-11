@@ -23,25 +23,16 @@ logger = logging.getLogger(__name__)
 
 # ── Private/reserved IP detection ─────────────────────────────────────────────
 
-_PRIVATE_NETWORKS = [
-    ipaddress.ip_network('0.0.0.0/8'),       # "this" network
-    ipaddress.ip_network('10.0.0.0/8'),
-    ipaddress.ip_network('172.16.0.0/12'),
-    ipaddress.ip_network('192.168.0.0/16'),
-    ipaddress.ip_network('127.0.0.0/8'),
-    ipaddress.ip_network('169.254.0.0/16'),
-    ipaddress.ip_network('224.0.0.0/4'),     # multicast
-    ipaddress.ip_network('255.255.255.255/32'),
-]
-
-
 def is_public_ip(ip_str: str) -> bool:
-    """Check if an IP is public (not RFC1918, loopback, link-local, multicast)."""
+    """Check if an IP is public (not RFC1918, ULA, loopback, link-local, multicast).
+
+    Works for both IPv4 and IPv6 addresses using Python's built-in is_global.
+    """
     if not ip_str:
         return False
     try:
         ip = ipaddress.ip_address(ip_str)
-        return not any(ip in net for net in _PRIVATE_NETWORKS)
+        return ip.is_global and not ip.is_multicast
     except ValueError:
         return False
 

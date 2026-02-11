@@ -44,24 +44,24 @@ FW_RULE     = re.compile(r'\[([^\]]+)\]')
 FW_DESC     = re.compile(r'DESCR="([^"]*)"')
 FW_IN       = re.compile(r'IN=(\S*)')
 FW_OUT      = re.compile(r'OUT=(\S*)')
-FW_SRC      = re.compile(r'SRC=([0-9.]+)')
-FW_DST      = re.compile(r'DST=([0-9.]+)')
+FW_SRC      = re.compile(r'SRC=([0-9a-fA-F:.]+)')
+FW_DST      = re.compile(r'DST=([0-9a-fA-F:.]+)')
 FW_PROTO    = re.compile(r'PROTO=([A-Z]+)')
 FW_SPT      = re.compile(r'SPT=(\d+)')
 FW_DPT      = re.compile(r'DPT=(\d+)')
 FW_MAC      = re.compile(r'MAC=([0-9a-f:]+)')
 
 # ── DNS (dnsmasq) ─────────────────────────────────────────────────────────────
-DNS_QUERY   = re.compile(r'query\[([A-Z]+)\]\s+(\S+)\s+from\s+([0-9.]+)')
+DNS_QUERY   = re.compile(r'query\[([A-Z]+)\]\s+(\S+)\s+from\s+([0-9a-fA-F:.]+)')
 DNS_REPLY   = re.compile(r'reply\s+(\S+)\s+is\s+(.+)')
-DNS_FORWARD = re.compile(r'forwarded\s+(\S+)\s+to\s+([0-9.]+)')
+DNS_FORWARD = re.compile(r'forwarded\s+(\S+)\s+to\s+([0-9a-fA-F:.]+)')
 DNS_CACHED  = re.compile(r'cached\s+(\S+)\s+is\s+(.+)')
 
 # ── DHCP (dnsmasq-dhcp) ───────────────────────────────────────────────────────
-DHCP_ACK     = re.compile(r'DHCPACK\((\S+)\)\s+([0-9.]+)\s+([0-9a-f:]+)\s*(\S*)')
+DHCP_ACK     = re.compile(r'DHCPACK\((\S+)\)\s+([0-9a-fA-F:.]+)\s+([0-9a-f:]+)\s*(\S*)')
 DHCP_DISC    = re.compile(r'DHCPDISCOVER\((\S+)\)\s+([0-9a-f:]+)')
-DHCP_OFFER   = re.compile(r'DHCPOFFER\((\S+)\)\s+([0-9.]+)\s+([0-9a-f:]+)')
-DHCP_REQ     = re.compile(r'DHCPREQUEST\((\S+)\)\s+([0-9.]+)\s+([0-9a-f:]+)')
+DHCP_OFFER   = re.compile(r'DHCPOFFER\((\S+)\)\s+([0-9a-fA-F:.]+)\s+([0-9a-f:]+)')
+DHCP_REQ     = re.compile(r'DHCPREQUEST\((\S+)\)\s+([0-9a-fA-F:.]+)\s+([0-9a-f:]+)')
 
 # ── WiFi (stamgr / hostapd) ───────────────────────────────────────────────────
 WIFI_EVENT  = re.compile(r'(\w+):\s+STA\s+([0-9a-f:]+)')

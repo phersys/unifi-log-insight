@@ -241,6 +241,9 @@ def wan_candidates():
                               OR dst_ip << '172.16.0.0/12'::inet
                               OR dst_ip << '192.168.0.0/16'::inet
                               OR dst_ip << '127.0.0.0/8'::inet
+                              OR dst_ip << 'fc00::/7'::inet
+                              OR dst_ip << 'fe80::/10'::inet
+                              OR dst_ip << '::1/128'::inet
                               OR host(dst_ip) = '255.255.255.255')
                     ) AS wan_ip
                 FROM logs
@@ -283,7 +286,9 @@ def network_segments(wan_interfaces: str = None):
                       AND interface_in IS NOT NULL
                       AND (src_ip << '10.0.0.0/8'::inet
                            OR src_ip << '172.16.0.0/12'::inet
-                           OR src_ip << '192.168.0.0/16'::inet)
+                           OR src_ip << '192.168.0.0/16'::inet
+                           OR src_ip << 'fc00::/7'::inet
+                           OR src_ip << 'fe80::/10'::inet)
                     UNION
                     SELECT interface_out as iface, dst_ip as src_ip
                     FROM logs
@@ -291,7 +296,9 @@ def network_segments(wan_interfaces: str = None):
                       AND interface_out IS NOT NULL
                       AND (dst_ip << '10.0.0.0/8'::inet
                            OR dst_ip << '172.16.0.0/12'::inet
-                           OR dst_ip << '192.168.0.0/16'::inet)
+                           OR dst_ip << '192.168.0.0/16'::inet
+                           OR dst_ip << 'fc00::/7'::inet
+                           OR dst_ip << 'fe80::/10'::inet)
                 )
                 SELECT
                     iface,
@@ -320,6 +327,9 @@ def network_segments(wan_interfaces: str = None):
                                      OR dst_ip << '172.16.0.0/12'::inet
                                      OR dst_ip << '192.168.0.0/16'::inet
                                      OR dst_ip << '127.0.0.0/8'::inet
+                                     OR dst_ip << 'fc00::/7'::inet
+                                     OR dst_ip << 'fe80::/10'::inet
+                                     OR dst_ip << '::1/128'::inet
                                      OR host(dst_ip) = '255.255.255.255')
                            ) AS wan_ip
                     FROM logs
