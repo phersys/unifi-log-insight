@@ -127,10 +127,12 @@ class Database:
         """
         with self.get_conn() as conn:
             with conn.cursor() as cur:
+                lock_acquired = False
                 try:
                     # Advisory lock prevents race between receiver and API processes
                     cur.execute("SELECT pg_try_advisory_lock(20250212)")
-                    if not cur.fetchone()[0]:
+                    lock_acquired = cur.fetchone()[0]
+                    if not lock_acquired:
                         return  # Another process is handling it
 
                     cur.execute("SELECT value FROM system_config WHERE key = 'tz_backfill_done'")
@@ -167,7 +169,8 @@ class Database:
                 except Exception as e:
                     logger.error("TZ backfill failed: %s", e)
                 finally:
-                    cur.execute("SELECT pg_advisory_unlock(20250212)")
+                    if lock_acquired:
+                        cur.execute("SELECT pg_advisory_unlock(20250212)")
 
     @staticmethod
     def _set_config_with_cursor(cur, key: str, value):
