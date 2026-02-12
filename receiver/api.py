@@ -923,7 +923,16 @@ def health():
 def abuseipdb_status():
     try:
         with open('/tmp/abuseipdb_stats.json') as f:
-            return json.load(f)
+            stats = json.load(f)
+            reset_at = stats.get('reset_at')
+            remaining = stats.get('remaining', 0) or 0
+            if reset_at is not None and remaining <= 0:
+                try:
+                    if time.time() > float(reset_at):
+                        stats['quota_reset_pending'] = True
+                except (ValueError, TypeError):
+                    pass
+            return stats
     except FileNotFoundError:
         return {"remaining": None, "limit": None}
 
@@ -942,7 +951,17 @@ def enrich_ip(ip: str):
             stats = json.load(f)
             remaining = stats.get('remaining', 0) or 0
             if remaining <= 0:
-                raise HTTPException(status_code=429, detail="No API budget remaining — resets daily")
+                # Check if quota has renewed since stats were written
+                reset_at = stats.get('reset_at')
+                quota_renewed = False
+                if reset_at is not None:
+                    try:
+                        quota_renewed = time.time() > float(reset_at)
+                    except (ValueError, TypeError):
+                        pass
+                if not quota_renewed:
+                    raise HTTPException(status_code=429, detail="No API budget remaining — resets daily")
+                logger.info("Manual enrich: quota reset detected (reset_at %s passed), allowing call", reset_at)
     except FileNotFoundError:
         pass  # No stats yet — allow call to bootstrap rate limit state
 

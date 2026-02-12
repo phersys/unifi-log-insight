@@ -212,6 +212,7 @@ class AbuseIPDBEnricher:
                         self._rate_limit_remaining = None  # Will re-learn from next call
                         self._rate_limit_reset = None
                         self._paused_until = 0.0
+                        self._write_stats()  # Persist so API process sees the reset
                 except (ValueError, TypeError):
                     pass
 
@@ -225,10 +226,11 @@ class AbuseIPDBEnricher:
     @property
     def remaining_budget(self) -> int:
         """How many API calls we can still make this period.
-        
+
         Used by backfill to limit orphan lookups.
         Returns 0 if unknown or exhausted.
         """
+        self._check_rate_limit()  # Detect daily reset before reading state
         with self._lock:
             if self._rate_limit_remaining is None:
                 return 0  # Unknown — don't let backfill guess
