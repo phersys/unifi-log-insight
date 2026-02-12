@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { fetchLogs, getExportUrl } from '../api'
+import { fetchLogs, fetchLog, getExportUrl } from '../api'
 import FilterBar from './FilterBar'
 import LogTable from './LogTable'
 import Pagination from './Pagination'
@@ -20,6 +20,15 @@ const DEFAULT_FILTERS = {
 }
 
 const STORAGE_KEY = 'unifi-log-insight:log-types'
+const COLUMNS_STORAGE_KEY = 'unifi-log-insight:hidden-columns'
+
+const TOGGLEABLE_COLUMNS = [
+  { key: 'country', label: 'Country' },
+  { key: 'asn', label: 'ASN' },
+  { key: 'rule', label: 'Rule / Info' },
+  { key: 'threat', label: 'AbuseIPDB' },
+  { key: 'categories', label: 'Categories' },
+]
 
 export default function LogStream() {
   const [filters, setFilters] = useState(() => {
@@ -34,7 +43,17 @@ export default function LogStream() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [lastUpdate, setLastUpdate] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
+  const [detailedLog, setDetailedLog] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
+  const [hiddenColumns, setHiddenColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem(COLUMNS_STORAGE_KEY)
+      if (saved) return new Set(JSON.parse(saved))
+    } catch (e) { /* private browsing */ }
+    return new Set()
+  })
+  const [showColumnsMenu, setShowColumnsMenu] = useState(false)
+  const columnsMenuRef = useRef(null)
   const intervalRef = useRef(null)
   const pendingRef = useRef(null)
 
@@ -48,6 +67,29 @@ export default function LogStream() {
       }
     } catch (e) { /* private browsing */ }
   }, [filters.log_type])
+
+  // Persist hidden columns to localStorage
+  const toggleColumn = (key) => {
+    setHiddenColumns(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      try { localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify([...next])) } catch (e) { /* private browsing */ }
+      return next
+    })
+  }
+
+  // Close columns menu on click outside
+  useEffect(() => {
+    if (!showColumnsMenu) return
+    const handler = (e) => {
+      if (columnsMenuRef.current && !columnsMenuRef.current.contains(e.target)) {
+        setShowColumnsMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showColumnsMenu])
 
   // Effective auto-refresh: paused when a row is expanded
   const isRefreshing = autoRefresh && expandedId === null
@@ -72,6 +114,16 @@ export default function LogStream() {
     }
     return () => { if (pendingRef.current) clearInterval(pendingRef.current) }
   }, [autoRefresh, expandedId, filters, data.total])
+
+  // Fetch detail data when a row is expanded
+  useEffect(() => {
+    if (expandedId === null) { setDetailedLog(null); return }
+    let cancelled = false
+    fetchLog(expandedId)
+      .then(detail => { if (!cancelled) setDetailedLog(detail) })
+      .catch(() => { if (!cancelled) setDetailedLog(null) })
+    return () => { cancelled = true }
+  }, [expandedId])
 
   // Auto-resume: when row is collapsed, refresh immediately
   const handleToggleExpand = (id) => {
@@ -161,6 +213,40 @@ export default function LogStream() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <div className="relative inline-flex items-center" ref={columnsMenuRef}>
+            <button
+              onClick={() => setShowColumnsMenu(v => !v)}
+              className={`text-[11px] transition-colors ${hiddenColumns.size > 0 ? 'text-amber-400' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+              Columns{hiddenColumns.size > 0 ? ` (${TOGGLEABLE_COLUMNS.length - hiddenColumns.size}/${TOGGLEABLE_COLUMNS.length})` : ''}
+            </button>
+            {showColumnsMenu && (
+              <div className="absolute right-0 top-full mt-1 w-40 bg-gray-800 border border-gray-700 rounded shadow-lg z-20 py-1">
+                {TOGGLEABLE_COLUMNS.map(col => (
+                  <label
+                    key={col.key}
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 cursor-pointer select-none"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!hiddenColumns.has(col.key)}
+                      onChange={() => toggleColumn(col.key)}
+                      className="rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-0 focus:ring-offset-0"
+                    />
+                    {col.label}
+                  </label>
+                ))}
+                <div className="border-t border-gray-700 mt-1 pt-1 px-3 pb-1">
+                  <button
+                    onClick={() => setShowColumnsMenu(false)}
+                    className="w-full text-xs text-gray-400 hover:text-gray-200 py-1 transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => load(filters)}
             className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
@@ -178,7 +264,7 @@ export default function LogStream() {
 
       {/* Log table */}
       <div className="flex-1 overflow-auto">
-        <LogTable logs={data.data} loading={loading} expandedId={expandedId} onToggleExpand={handleToggleExpand} />
+        <LogTable logs={data.data} loading={loading} expandedId={expandedId} detailedLog={detailedLog} onToggleExpand={handleToggleExpand} hiddenColumns={hiddenColumns} />
       </div>
 
       {/* Pagination */}

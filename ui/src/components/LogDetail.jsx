@@ -15,7 +15,7 @@ function parseRuleName(ruleName) {
   }
 }
 
-export default function LogDetail({ log }) {
+export default function LogDetail({ log, hiddenColumns = new Set() }) {
   const [enriching, setEnriching] = useState(false)
   const [enrichError, setEnrichError] = useState(null)
   const [enrichedData, setEnrichedData] = useState(null)
@@ -84,8 +84,8 @@ export default function LogDetail({ log }) {
     )
   }
 
-  // GeoIP
-  if (displayLog.geo_country) {
+  // GeoIP (hidden when country column is hidden)
+  if (displayLog.geo_country && !hiddenColumns.has('country')) {
     const geo = [
       getFlag(displayLog.geo_country),
       displayLog.geo_country,
@@ -105,8 +105,8 @@ export default function LogDetail({ log }) {
     )
   }
 
-  // ASN
-  if (displayLog.asn_name) {
+  // ASN (hidden when ASN column is hidden)
+  if (displayLog.asn_name && !hiddenColumns.has('asn')) {
     sections.push(
       <div key="asn">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">ASN</span>
@@ -120,35 +120,37 @@ export default function LogDetail({ log }) {
 
   // Firewall details
   if (displayLog.log_type === 'firewall') {
-    // Parsed rule breakdown
-    const parsed = parseRuleName(displayLog.rule_name)
-    if (parsed) {
-      sections.push(
-        <div key="rule_parsed">
-          <span className="text-gray-500 text-[12px] uppercase tracking-wider">Rule Details</span>
-          <div className="text-gray-300 text-sm mt-0.5">
-            <span className="text-gray-400">Chain:</span> {parsed.chain}
-            <span className="text-gray-600 mx-2">·</span>
-            <span className="text-gray-400">Action:</span> {parsed.action}
-            <span className="text-gray-600 mx-2">·</span>
-            <span className="text-gray-400">Priority:</span> {parsed.priority}
+    // Parsed rule breakdown (hidden when rule column is hidden)
+    if (!hiddenColumns.has('rule')) {
+      const parsed = parseRuleName(displayLog.rule_name)
+      if (parsed) {
+        sections.push(
+          <div key="rule_parsed">
+            <span className="text-gray-500 text-[12px] uppercase tracking-wider">Rule Details</span>
+            <div className="text-gray-300 text-sm mt-0.5">
+              <span className="text-gray-400">Chain:</span> {parsed.chain}
+              <span className="text-gray-600 mx-2">·</span>
+              <span className="text-gray-400">Action:</span> {parsed.action}
+              <span className="text-gray-600 mx-2">·</span>
+              <span className="text-gray-400">Priority:</span> {parsed.priority}
+            </div>
           </div>
-        </div>
-      )
+        )
+      }
+
+      // Rule description
+      if (displayLog.rule_desc) {
+        const desc = displayLog.rule_desc.replace(/\](?!\s)/, '] ')
+        sections.push(
+          <div key="rule_desc">
+            <span className="text-gray-500 text-[12px] uppercase tracking-wider">Rule Description</span>
+            <div className="text-gray-300 text-sm mt-0.5">{desc}</div>
+          </div>
+        )
+      }
     }
 
-    // Rule description
-    if (displayLog.rule_desc) {
-      const desc = displayLog.rule_desc.replace(/\](?!\s)/, '] ')
-      sections.push(
-        <div key="rule_desc">
-          <span className="text-gray-500 text-[12px] uppercase tracking-wider">Rule Description</span>
-          <div className="text-gray-300 text-sm mt-0.5">{desc}</div>
-        </div>
-      )
-    }
-
-    // Service name
+    // Service name + description
     if (displayLog.service_name) {
       sections.push(
         <div key="service">
@@ -159,6 +161,9 @@ export default function LogDetail({ log }) {
               <span className="text-gray-500"> (port {displayLog.dst_port})</span>
             )}
           </div>
+          {displayLog.service_description && (
+            <div className="text-gray-500 text-xs mt-0.5">{displayLog.service_description}</div>
+          )}
         </div>
       )
     }
@@ -210,10 +215,11 @@ export default function LogDetail({ log }) {
     }
   }
 
-  // AbuseIPDB Detail Fields
+  // AbuseIPDB Detail Fields (hidden when both threat and categories columns are hidden)
+  const showAbuse = !hiddenColumns.has('threat') || !hiddenColumns.has('categories')
   const abuseDetails = []
 
-  if (displayLog.threat_score !== null && displayLog.threat_score !== undefined) {
+  if (showAbuse && displayLog.threat_score !== null && displayLog.threat_score !== undefined) {
     const score = displayLog.threat_score
     let color = 'text-emerald-400'
     let label = 'Clean'
@@ -228,7 +234,7 @@ export default function LogDetail({ log }) {
         <div className={`text-sm mt-0.5 ${color} font-medium`}>
           {score}% · {label}
         </div>
-        {decodeThreatCategories(displayLog.threat_categories) && (
+        {!hiddenColumns.has('categories') && decodeThreatCategories(displayLog.threat_categories) && (
           <div className="text-[11px] text-orange-400/70 mt-0.5">
             {decodeThreatCategories(displayLog.threat_categories)}
           </div>
@@ -237,7 +243,7 @@ export default function LogDetail({ log }) {
     )
   }
 
-  if (displayLog.abuse_usage_type) {
+  if (showAbuse && displayLog.abuse_usage_type) {
     abuseDetails.push(
       <div key="abuse_usage">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">AbuseIPDB Usage Type</span>
@@ -246,7 +252,7 @@ export default function LogDetail({ log }) {
     )
   }
 
-  if (displayLog.abuse_hostnames) {
+  if (showAbuse && displayLog.abuse_hostnames) {
     abuseDetails.push(
       <div key="abuse_hosts">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">AbuseIPDB Host Names</span>
@@ -255,7 +261,7 @@ export default function LogDetail({ log }) {
     )
   }
 
-  if (displayLog.abuse_total_reports != null && displayLog.abuse_total_reports > 0) {
+  if (showAbuse && displayLog.abuse_total_reports != null && displayLog.abuse_total_reports > 0) {
     abuseDetails.push(
       <div key="abuse_reports">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">AbuseIPDB Reports #</span>
@@ -264,7 +270,7 @@ export default function LogDetail({ log }) {
     )
   }
 
-  if (displayLog.abuse_last_reported) {
+  if (showAbuse && displayLog.abuse_last_reported) {
     const d = new Date(displayLog.abuse_last_reported)
     const formatted = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     abuseDetails.push(
@@ -275,7 +281,7 @@ export default function LogDetail({ log }) {
     )
   }
 
-  if (displayLog.abuse_is_whitelisted) {
+  if (showAbuse && displayLog.abuse_is_whitelisted) {
     abuseDetails.push(
       <div key="abuse_wl">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">AbuseIPDB Whitelisted</span>
@@ -284,7 +290,7 @@ export default function LogDetail({ log }) {
     )
   }
 
-  if (displayLog.abuse_is_tor) {
+  if (showAbuse && displayLog.abuse_is_tor) {
     abuseDetails.push(
       <div key="abuse_tor">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">AbuseIPDB Tor</span>
@@ -294,7 +300,7 @@ export default function LogDetail({ log }) {
   }
 
   // Enrich button — shown when abuse data is missing for a blocked firewall log
-  const showEnrichButton = canEnrich && !enrichedData
+  const showEnrichButton = showAbuse && canEnrich && !enrichedData
 
   return (
     <div className="bg-gray-900/50 border-t border-gray-800 px-4 py-3">

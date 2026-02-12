@@ -35,6 +35,7 @@ from psycopg2.extras import RealDictCursor
 from parsers import get_wan_ip
 from db import Database, get_config, set_config, count_logs
 from enrichment import AbuseIPDBEnricher, is_public_ip
+from services import get_service_description
 
 _log_level_name = os.environ.get('LOG_LEVEL', 'INFO').upper()
 if _log_level_name not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
@@ -604,6 +605,11 @@ def get_log(log_id: int):
             log['geo_lat'] = float(log['geo_lat'])
         if log.get('geo_lon'):
             log['geo_lon'] = float(log['geo_lon'])
+
+        # Enrich with IANA service description for expanded detail view
+        desc = get_service_description(log.get('dst_port'), log.get('protocol'))
+        if desc:
+            log['service_description'] = desc
 
         conn.commit()
         return log

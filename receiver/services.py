@@ -13,22 +13,26 @@ from typing import Dict, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
-# Global service mapping: (port, protocol) -> service_name
+# Global service mappings: (port, protocol) -> name / description
 _SERVICE_MAP: Dict[Tuple[int, str], str] = {}
+_SERVICE_DESC_MAP: Dict[Tuple[int, str], str] = {}
 
-def _load_service_map() -> Dict[Tuple[int, str], str]:
+def _load_service_maps():
     """
-    Load IANA service names from CSV at module initialization.
+    Load IANA service names and descriptions from CSV at module initialization.
 
-    Returns dict keyed by (port, protocol) -> service_name.
-    Gracefully degrades to empty dict if CSV is missing or malformed.
+    Returns (name_map, desc_map) dicts keyed by (port, protocol).
+    name_map values are short service names (e.g. "http", "ssh").
+    desc_map values are longer descriptions (e.g. "World Wide Web HTTP").
+    Gracefully degrades to empty dicts if CSV is missing or malformed.
     """
-    service_map = {}
+    name_map = {}
+    desc_map = {}
     csv_path = Path(__file__).parent / 'data' / 'service-names-port-numbers.csv'
 
     if not csv_path.exists():
         logger.warning(f"IANA service CSV not found at {csv_path} — service name lookups will return None")
-        return service_map
+        return name_map, desc_map
 
     try:
         with open(csv_path, 'r', encoding='utf-8') as f:
@@ -41,17 +45,12 @@ def _load_service_map() -> Dict[Tuple[int, str], str]:
                 protocol = row.get('Transport Protocol', '').strip().lower()
                 reference = row.get('Reference', '').strip()
 
-                # Use description if available, otherwise fall back to service name
-                # Description is more user-friendly (e.g., "Message Submission over TLS protocol" vs "submissions")
-                display_name = description or service_name
-
-                # Skip entries without a name or port
-                if not display_name or not port_str:
+                # Skip entries without a usable name or port
+                if not (service_name or description) or not port_str:
                     continue
 
                 # Parse port number (can be a range like "80-90", we take first)
                 try:
-                    # Handle port ranges by taking the first port
                     if '-' in port_str:
                         port = int(port_str.split('-')[0])
                     else:
@@ -63,36 +62,51 @@ def _load_service_map() -> Dict[Tuple[int, str], str]:
                 if protocol not in ('tcp', 'udp', 'sctp', 'dccp'):
                     continue
 
-                # Prefer RFC-standardized entries over non-standard ones
-                # If we already have an entry, only replace it if the new one has an RFC reference
                 key = (port, protocol)
-                if key not in service_map:
-                    service_map[key] = display_name
-                elif reference and 'RFC' in reference.upper():
-                    # Replace existing entry if this one has RFC backing (more authoritative)
-                    service_map[key] = display_name
+                short = service_name or description
+                long = description or service_name
 
-        logger.info(f"Loaded {len(service_map)} IANA service name mappings from {csv_path}")
+                # Prefer RFC-standardized entries over non-standard ones
+                if key not in name_map or (reference and 'RFC' in reference.upper()):
+                    name_map[key] = short
+                    if long != short:
+                        desc_map[key] = long
+                    elif key in desc_map and name_map[key] != short:
+                        # New RFC entry replaced name; clear stale description if same
+                        pass
+
+        logger.info(f"Loaded {len(name_map)} IANA service name mappings from {csv_path}")
 
     except Exception as e:
         logger.error(
             f"Failed to parse IANA service CSV at {csv_path}: {e} — "
-            f"returning {len(service_map)} entries parsed before error"
+            f"returning {len(name_map)} entries parsed before error"
         )
-        return service_map
 
-    return service_map
+    return name_map, desc_map
 
 # Initialize at module load
-_SERVICE_MAP = _load_service_map()
+_SERVICE_MAP, _SERVICE_DESC_MAP = _load_service_maps()
 
 def get_service_mappings() -> Dict[Tuple[int, str], str]:
-    """Return the full service mapping dictionary.
+    """Return the full service name mapping dictionary.
 
     Returns:
-        Dict keyed by (port, protocol) -> service_name.
+        Dict keyed by (port, protocol) -> short service name.
     """
     return _SERVICE_MAP
+
+
+def get_service_description(port: Optional[int], protocol: Optional[str] = 'tcp') -> Optional[str]:
+    """Return IANA service description (longer form) for the given port and protocol.
+
+    Returns the description only when it differs from the short name.
+    Returns None if no description exists or port is None.
+    """
+    if port is None:
+        return None
+    normalized_protocol = (protocol or 'tcp').lower()
+    return _SERVICE_DESC_MAP.get((port, normalized_protocol))
 
 def get_service_name(port: Optional[int], protocol: Optional[str] = 'tcp') -> Optional[str]:
     """

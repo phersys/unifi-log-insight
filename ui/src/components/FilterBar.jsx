@@ -53,17 +53,17 @@ export default function FilterBar({ filters, onChange }) {
   useEffect(() => {
     const t = setTimeout(() => onChange({ ...filtersRef.current, ip: ipSearch || null }), 400)
     return () => clearTimeout(t)
-  }, [ipSearch, onChange])
+  }, [ipSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = setTimeout(() => onChange({ ...filtersRef.current, rule_name: ruleSearch || null }), 400)
     return () => clearTimeout(t)
-  }, [ruleSearch, onChange])
+  }, [ruleSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = setTimeout(() => onChange({ ...filtersRef.current, search: textSearch || null }), 400)
     return () => clearTimeout(t)
-  }, [textSearch, onChange])
+  }, [textSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleType = (type) => {
     const current = filters.log_type ? filters.log_type.split(',') : LOG_TYPES

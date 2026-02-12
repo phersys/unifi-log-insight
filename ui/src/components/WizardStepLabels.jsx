@@ -57,6 +57,15 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
     fetchNetworkSegments(wanInterfaces || [])
       .then(data => {
         const segs = data.segments || []
+
+        // Re-add manually-added interfaces from saved labels that the API didn't return
+        const discoveredSet = new Set(segs.map(s => s.interface))
+        const wanSet = new Set(wanInterfaces || [])
+        for (const iface of Object.keys(labels)) {
+          if (!discoveredSet.has(iface) && !wanSet.has(iface) && /^br\d+$/.test(iface)) {
+            segs.push({ interface: iface, sample_local_ip: null, suggested_label: '', is_wan: false, manual: true })
+          }
+        }
         setSegments(segs)
 
         // Pre-populate labels with suggested values if not already set

@@ -65,7 +65,7 @@ function formatRuleDesc(desc) {
   return desc.replace(/\](?!\s)/, '] ')
 }
 
-function LogRow({ log, isExpanded, detailedLog, onToggle }) {
+function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCount }) {
   const actionStyle = ACTION_STYLES[log.rule_action || log.dhcp_event || log.wifi_event] || ''
   const typeStyle = LOG_TYPE_STYLES[log.log_type] || LOG_TYPE_STYLES.system
   const dirIcon = DIRECTION_ICONS[log.direction] || ''
@@ -78,6 +78,8 @@ function LogRow({ log, isExpanded, detailedLog, onToggle }) {
   const infoTitle = log.log_type === 'firewall'
     ? (formatRuleDesc(log.rule_desc) || log.rule_name || '')
     : infoText
+
+  const show = (key) => !hiddenColumns.has(key)
 
   return (
     <>
@@ -126,18 +128,22 @@ function LogRow({ log, isExpanded, detailedLog, onToggle }) {
         </td>
 
         {/* Country */}
-        <td className="px-2 py-1.5 text-[13px] whitespace-nowrap" title={log.geo_country}>
-          {log.geo_country ? (
-            <span>{getFlag(log.geo_country)} <span className="text-gray-500">{log.geo_country}</span></span>
-          ) : (
-            <span className="text-gray-700">—</span>
-          )}
-        </td>
+        {show('country') && (
+          <td className="px-2 py-1.5 text-[13px] whitespace-nowrap" title={log.geo_country}>
+            {log.geo_country ? (
+              <span>{getFlag(log.geo_country)} <span className="text-gray-500">{log.geo_country}</span></span>
+            ) : (
+              <span className="text-gray-700">—</span>
+            )}
+          </td>
+        )}
 
         {/* ASN */}
-        <td className="px-2 py-1.5 text-[12px] text-gray-500 max-w-[150px] truncate" title={log.asn_name || ''}>
-          {log.asn_name || '—'}
-        </td>
+        {show('asn') && (
+          <td className="px-2 py-1.5 text-[12px] text-gray-500 max-w-[150px] truncate" title={log.asn_name || ''}>
+            {log.asn_name || '—'}
+          </td>
+        )}
 
         {/* Network Path */}
         <td className="px-2 py-1.5 text-[12px] whitespace-nowrap">
@@ -155,25 +161,31 @@ function LogRow({ log, isExpanded, detailedLog, onToggle }) {
         </td>
 
         {/* Rule / Info */}
-        <td className="px-2 py-1.5 text-[12px] text-gray-500 max-w-[180px] truncate" title={infoTitle}>
-          {infoText}
-        </td>
+        {show('rule') && (
+          <td className="px-2 py-1.5 text-[12px] text-gray-500 max-w-[180px] truncate" title={infoTitle}>
+            {infoText}
+          </td>
+        )}
 
         {/* AbuseIPDB */}
-        <td className="px-2 py-1.5 text-[13px] text-center">
-          <ThreatBadge score={log.threat_score} categories={log.threat_categories} />
-        </td>
+        {show('threat') && (
+          <td className="px-2 py-1.5 text-[13px] text-center">
+            <ThreatBadge score={log.threat_score} categories={log.threat_categories} />
+          </td>
+        )}
 
         {/* Threat Categories */}
-        <td className="px-2 py-1.5 text-[11px] text-orange-400/70 max-w-[180px] truncate" title={decodeThreatCategories(log.threat_categories) || ''}>
-          {decodeThreatCategories(log.threat_categories) || <span className="text-gray-700">—</span>}
-        </td>
+        {show('categories') && (
+          <td className="px-2 py-1.5 text-[11px] text-orange-400/70 max-w-[180px] truncate" title={decodeThreatCategories(log.threat_categories) || ''}>
+            {decodeThreatCategories(log.threat_categories) || <span className="text-gray-700">—</span>}
+          </td>
+        )}
       </tr>
 
       {isExpanded && (
         <tr>
-          <td colSpan={14}>
-            <LogDetail log={detailedLog || log} />
+          <td colSpan={colCount}>
+            <LogDetail log={detailedLog || log} hiddenColumns={hiddenColumns} />
           </td>
         </tr>
       )}
@@ -181,9 +193,9 @@ function LogRow({ log, isExpanded, detailedLog, onToggle }) {
   )
 }
 
-export default function LogTable({ logs, loading, expandedId, detailedLog, onToggleExpand }) {
+export default function LogTable({ logs, loading, expandedId, detailedLog, onToggleExpand, hiddenColumns = new Set() }) {
 
-  const columns = [
+  const allColumns = [
     { key: 'timestamp', label: 'Time', className: 'w-20' },
     { key: 'log_type', label: 'Type', className: 'w-20' },
     { key: 'action', label: 'Action', className: 'w-20' },
@@ -200,12 +212,15 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
     { key: 'categories', label: 'Categories', className: 'w-40' },
   ]
 
+  const visibleColumns = allColumns.filter(col => !hiddenColumns.has(col.key))
+  const colCount = visibleColumns.length
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left">
         <thead>
           <tr className="border-b border-gray-800">
-            {columns.map(col => (
+            {visibleColumns.map(col => (
               <th
                 key={col.key}
                 className={`px-2 py-2 text-[12px] text-gray-500 font-medium uppercase tracking-wider ${col.className}`}
@@ -218,13 +233,13 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={14} className="text-center py-12 text-gray-600 text-sm">
+              <td colSpan={colCount} className="text-center py-12 text-gray-600 text-sm">
                 Loading...
               </td>
             </tr>
           ) : logs.length === 0 ? (
             <tr>
-              <td colSpan={14} className="text-center py-12 text-gray-600 text-sm">
+              <td colSpan={colCount} className="text-center py-12 text-gray-600 text-sm">
                 No logs match current filters
               </td>
             </tr>
@@ -236,6 +251,8 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
                 isExpanded={expandedId === log.id}
                 detailedLog={expandedId === log.id ? detailedLog : null}
                 onToggle={() => onToggleExpand(log.id)}
+                hiddenColumns={hiddenColumns}
+                colCount={colCount}
               />
             ))
           )}
