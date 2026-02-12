@@ -166,8 +166,9 @@ class Database:
                     logger.info("TZ backfill: corrected %d log timestamps from UTC to %s.", fixed, tz_name)
                     self._set_config_with_cursor(cur, 'tz_backfill_done',
                                                  {'tz': tz_name, 'rows': fixed, 'skipped': False})
-                except Exception as e:
-                    logger.error("TZ backfill failed: %s", e)
+                except Exception:
+                    logger.exception("TZ backfill failed")
+                    conn.rollback()
                 finally:
                     if lock_acquired:
                         cur.execute("SELECT pg_advisory_unlock(20250212)")
