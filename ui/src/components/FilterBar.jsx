@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchServices, fetchInterfaces } from '../api'
 import { getInterfaceName } from '../utils'
 
@@ -31,6 +31,10 @@ export default function FilterBar({ filters, onChange }) {
     filters.interface ? filters.interface.split(',') : []
   )
 
+  // Ref to avoid stale closures in debounce effects
+  const filtersRef = useRef(filters)
+  useEffect(() => { filtersRef.current = filters }, [filters])
+
   // Load services for autocomplete
   useEffect(() => {
     fetchServices()
@@ -47,19 +51,19 @@ export default function FilterBar({ filters, onChange }) {
 
   // Debounce text inputs
   useEffect(() => {
-    const t = setTimeout(() => onChange({ ...filters, ip: ipSearch || null }), 400)
+    const t = setTimeout(() => onChange({ ...filtersRef.current, ip: ipSearch || null }), 400)
     return () => clearTimeout(t)
-  }, [ipSearch])
+  }, [ipSearch, onChange])
 
   useEffect(() => {
-    const t = setTimeout(() => onChange({ ...filters, rule_name: ruleSearch || null }), 400)
+    const t = setTimeout(() => onChange({ ...filtersRef.current, rule_name: ruleSearch || null }), 400)
     return () => clearTimeout(t)
-  }, [ruleSearch])
+  }, [ruleSearch, onChange])
 
   useEffect(() => {
-    const t = setTimeout(() => onChange({ ...filters, search: textSearch || null }), 400)
+    const t = setTimeout(() => onChange({ ...filtersRef.current, search: textSearch || null }), 400)
     return () => clearTimeout(t)
-  }, [textSearch])
+  }, [textSearch, onChange])
 
   const toggleType = (type) => {
     const current = filters.log_type ? filters.log_type.split(',') : LOG_TYPES
