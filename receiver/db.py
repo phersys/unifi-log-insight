@@ -109,6 +109,81 @@ class Database:
         except Exception as e:
             logger.error("Schema migration failed: %s", e)
 
+        self._backfill_tz_timestamps()
+
+    def _advisory_unlock(self, lock_id: int):
+        """Release a PostgreSQL advisory lock (best-effort)."""
+        try:
+            with self.get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pg_advisory_unlock(%s)", [lock_id])
+        except Exception:
+            pass  # Lock auto-releases on disconnect
+
+    def _get_backfill_tz(self) -> str | None:
+        """Return the TZ name for timestamp backfill, or None if no fix is needed."""
+        tz_name = os.environ.get('TZ', 'UTC')
+        if tz_name in ('UTC', 'Etc/UTC', 'GMT', 'Etc/GMT', ''):
+            return None
+        # Validate that PostgreSQL recognises this timezone name
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM pg_timezone_names WHERE name = %s", [tz_name])
+                if cur.fetchone():
+                    return tz_name
+        logger.warning("TZ backfill: '%s' not recognised by PostgreSQL, skipping.", tz_name)
+        return None
+
+    def _backfill_tz_timestamps(self):
+        """One-time migration: fix historical timestamps stored with wrong timezone.
+
+        Before v1.2.5, parse_syslog_timestamp() hardcoded UTC — syslog local times
+        were labelled as UTC, creating an offset equal to the TZ difference.
+        This re-interprets those timestamps in the container's actual TZ and
+        converts them to correct UTC.  Reads TZ from os.environ (same source as
+        the parser fix) and passes it to PostgreSQL's AT TIME ZONE, which
+        handles DST per-row automatically.
+
+        Gated by system_config 'tz_backfill_done' — runs once, then skips on
+        every subsequent boot.
+        """
+        try:
+            # Use advisory lock to prevent race between receiver and API processes
+            with self.get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pg_try_advisory_lock(20250212)")
+                    if not cur.fetchone()[0]:
+                        return  # Another process is handling it
+                    cur.execute("SELECT value FROM system_config WHERE key = 'tz_backfill_done'")
+                    if cur.fetchone():
+                        cur.execute("SELECT pg_advisory_unlock(20250212)")
+                        return  # Already migrated
+
+            tz_name = self._get_backfill_tz()
+            if not tz_name:
+                tz_label = os.environ.get('TZ', 'UTC') or 'UTC'
+                logger.info("TZ backfill: timezone is %s, no correction needed.", tz_label)
+                self.set_config('tz_backfill_done', {'tz': tz_label, 'rows': 0, 'skipped': True})
+                self._advisory_unlock(20250212)
+                return
+
+            with self.get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE logs
+                        SET timestamp = (timestamp AT TIME ZONE 'UTC')
+                                        AT TIME ZONE %s
+                    """, [tz_name])
+                    fixed = cur.rowcount
+
+            logger.info("TZ backfill: corrected %d log timestamps from UTC to %s.", fixed, tz_name)
+            self.set_config('tz_backfill_done', {'tz': tz_name, 'rows': fixed, 'skipped': False})
+            self._advisory_unlock(20250212)
+
+        except Exception as e:
+            logger.error("TZ backfill failed: %s", e)
+            self._advisory_unlock(20250212)
+
     def close(self):
         """Close all connections in the pool."""
         if self.pool:
