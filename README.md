@@ -139,7 +139,7 @@ Each firewall or traffic rule must have syslog individually enabled, or its logs
 4. Enable the **Syslog** toggle for that rule
 5. Repeat for all rules you wish to track
 
-<!-- TODO: Add screenshot of syslog toggle in Zone Policy Engine rule -->
+<img width="2056" height="1164" alt="image" src="https://github.com/user-attachments/assets/cc08f009-0c70-4d7a-8bf0-5de5e404909a" />
 
 > **Note:** Without per-rule syslog enabled, firewall logs will not appear in UniFi Log Insight even if global Activity Logging is configured.
 
