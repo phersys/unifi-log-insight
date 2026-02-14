@@ -207,9 +207,9 @@ class AbuseIPDBEnricher:
                 try:
                     reset_ts = float(self._rate_limit_reset)
                     if time.time() > reset_ts:
-                        # Quota has renewed — clear state, allow calls
+                        # Quota has renewed — restore to known limit
                         logger.info("AbuseIPDB quota reset (reset_at %s has passed)", self._rate_limit_reset)
-                        self._rate_limit_remaining = None  # Will re-learn from next call
+                        self._rate_limit_remaining = self._rate_limit_limit  # e.g. 1000; None if unknown
                         self._rate_limit_reset = None
                         self._paused_until = 0.0
                         self._write_stats()  # Persist so API process sees the reset
