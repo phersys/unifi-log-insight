@@ -43,17 +43,51 @@ Built for home network monitoring — runs as a single Docker container with zer
 
 - **Docker** and **Docker Compose** on the host machine
 - **UniFi Router** (or any UniFi gateway that supports remote syslog)
+- **Syslog enabled per firewall rule** — Each firewall rule you want to track must have syslog explicitly enabled in UniFi's Zone Policy Engine (Network App v.10+)
 - **MaxMind GeoLite2 account** (free) — for GeoIP/ASN lookups
 - **AbuseIPDB API key** (free tier, optional) — for threat scoring on blocked IPs
-- **Syslog enabled per firewall rule** — Each firewall rule you want to track must have syslog explicitly enabled in UniFi's Zone Policy Engine (Network App v.10+)
-
+  
 ---
-
-## 🚀 Quick Start
+# 🚀 Quick Start
 
 > 🖧 **Running Unraid?** Skip to the [Unraid Setup](#-unraid-setup) section for a no-terminal install guide.
 
-### Option A — Pull Pre-built Image (recommended)
+## 1. Unifi Configuration (Start here)
+
+### Configure Your Unifi Router Syslog
+
+> **Note:** Without per-rule Syslog enabled (Step 2 below), firewall logs will not appear in UniFi Log Insight even if global Activity Logging is configured.
+
+In your UniFi Network controller:
+
+#### 1.1 Enable Traffic Logging
+
+1. Go to **Settings → CyberSecure → Traffic Logging**
+2. Enable **Activity Logging (Syslog)**
+3. Under Contents, select Clients, Critical, Devices, Security Detections, Triggers, VPN, Firewall Default Policy.
+4. Set the syslog server to the `<docker-host-ip>` on port `514`
+5. Click Apply Changes.
+
+#### 1.2 Enable Syslog Per Firewall Rule
+
+Each firewall or traffic rule must have syslog individually enabled, or its logs won't be sent. As of UniFi Network App v.10+:
+
+1. Go to **Settings**
+2. Navigate to **Policy Engines → Zones**
+3. Select a rule you want to monitor
+4. Enable the **Syslog** toggle for that rule
+5. Repeat for all rules you wish to track
+
+<img width="2056" height="1164" alt="image" src="https://github.com/user-attachments/assets/cc08f009-0c70-4d7a-8bf0-5de5e404909a" />
+
+
+
+
+## 2. Pull or Build the App's Image:
+
+Choose between two installation options: Option A — Pull Pre-built Image or Option B — Build from Source. Both options require you to set the .env file.
+
+#### Option A — Pull Pre-built Image (recommended)
 
 No cloning or building required. Create a directory anywhere and add two files:
 
@@ -81,14 +115,32 @@ volumes:
 
 **`.env`**
 
+**Get the MaxMind GeoIP and AbuseIPDB Keys to add to .env file**
+
+### Maxmind
+**Auto-download (recommended):** Set `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` in `.env`. If no `.mmdb` files exist on first boot, the container downloads them automatically.
+
+**Manual download:** Download from your [MaxMind account](https://www.maxmind.com/en/accounts/current/geoip/downloads) and place in the `maxmind/` directory:
+- `GeoLite2-City.mmdb`
+- `GeoLite2-ASN.mmdb`
+
+### AbuseIP
+**Create a free account**: if you don't have one, signup to a free account from AbuseIPDB at https://www.abuseipdb.com/register?plan=free
+
+**Create your API Key**: Once your account is created and you are logged in, navigate to https://www.abuseipdb.com/account/api and click on 'Create Key'
+- Set `ABUSEIPDB_API_KEY` to the key you just copied from the site, into .env.
+
+
+Your final .env should look like this:
+
 ```env
 # PostgreSQL (required)
 POSTGRES_PASSWORD=your_strong_password_here
 
-# AbuseIPDB - free at https://www.abuseipdb.com/register (optional)
+# AbuseIPDB - free at https://www.abuseipdb.com/register (recommended)
 ABUSEIPDB_API_KEY=your_key_here
 
-# MaxMind GeoLite2 - free at https://www.maxmind.com/en/geolite2/signup (optional but recommended)
+# MaxMind GeoLite2 - free at https://www.maxmind.com/en/geolite2/signup (recommended)
 MAXMIND_ACCOUNT_ID=your_account_id
 MAXMIND_LICENSE_KEY=your_license_key
 
@@ -105,7 +157,7 @@ Then run:
 docker compose up -d
 ```
 
-### Option B — Build from Source
+#### Option B — Build from Source
 
 ```bash
 git clone https://github.com/jmasarweh/unifi-log-insight.git
@@ -114,38 +166,7 @@ cd unifi-log-insight
 docker compose up -d --build
 ```
 
-### MaxMind GeoIP Databases
-
-**Auto-download (recommended):** Set `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY` in `.env`. If no `.mmdb` files exist on first boot, the container downloads them automatically.
-
-**Manual download:** Download from your [MaxMind account](https://www.maxmind.com/en/accounts/current/geoip/downloads) and place in the `maxmind/` directory:
-- `GeoLite2-City.mmdb`
-- `GeoLite2-ASN.mmdb`
-
-### Configure Your Unifi Router Syslog
-
-In your UniFi Network controller:
-1. Go to **Settings → CyberSecure → Traffic Logging**
-2. Enable **Activity Logging (Syslog)**
-3. Under Contents, select Clients, Critical, Devices, Security Detections, Triggers, VPN, Firewall Default Policy.
-4. Set the syslog server to the `<docker-host-ip>` on port `514`
-5. Click Apply Changes.
-
-#### Enable Syslog Per Firewall Rule
-
-Each firewall or traffic rule must have syslog individually enabled, or its logs won't be sent. As of UniFi Network App v.10+:
-
-1. Go to **Settings**
-2. Navigate to **Policy Engines → Zones**
-3. Select a rule you want to monitor
-4. Enable the **Syslog** toggle for that rule
-5. Repeat for all rules you wish to track
-
-<img width="2056" height="1164" alt="image" src="https://github.com/user-attachments/assets/cc08f009-0c70-4d7a-8bf0-5de5e404909a" />
-
-> **Note:** Without per-rule syslog enabled, firewall logs will not appear in UniFi Log Insight even if global Activity Logging is configured.
-
-### Open the UI
+## 3. Open the UI
 
 Navigate to `http://<docker-host-ip>:8090`
 
@@ -220,14 +241,14 @@ graph LR
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `POSTGRES_PASSWORD` | Yes | PostgreSQL password for the `unifi` user |
-| `ABUSEIPDB_API_KEY` | No | Enables threat scoring on blocked inbound IPs. Free tier: 1,000 check lookups/day + 5 blacklist pulls/day |
-| `MAXMIND_ACCOUNT_ID` | No | Enables GeoIP auto-update. Without it, manually place `.mmdb` files |
-| `MAXMIND_LICENSE_KEY` | No | Paired with account ID for auto-update |
-| `TZ` | No | Timezone for cron schedules. Defaults to UTC. Examples: `Europe/London`, `Asia/Amman`, `America/New_York` |
-| `LOG_LEVEL` | No | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Defaults to `INFO`. Set to `WARNING` for quiet steady-state. Use `DEBUG` for troubleshooting |
+| Variable | Description |
+|---|---|
+| `POSTGRES_PASSWORD` | PostgreSQL password for the `unifi` user |
+| `ABUSEIPDB_API_KEY` | Enables threat scoring on blocked inbound IPs. Free tier: 1,000 check lookups/day + 5 blacklist pulls/day |
+| `MAXMIND_ACCOUNT_ID` | Enables GeoIP auto-update. Without it, manually place `.mmdb` files |
+| `MAXMIND_LICENSE_KEY` | Paired with account ID for auto-update |
+| `TZ` | Timezone for cron schedules. Defaults to UTC. Examples: `Europe/London`, `Asia/Amman`, `America/New_York` |
+| `LOG_LEVEL` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Defaults to `INFO`. Set to `WARNING` for quiet steady-state. Use `DEBUG` for troubleshooting |
 
 ### Ports
 
