@@ -81,6 +81,7 @@ def test_unifi_connection(body: dict):
         # Enable the API so wizard step 4 (firewall rules) can use it
         set_config(enricher_db, 'unifi_enabled', True)
         unifi_api.reload_config()
+        signal_receiver()
 
     return result
 
