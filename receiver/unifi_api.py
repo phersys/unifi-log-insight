@@ -97,7 +97,11 @@ class UniFiAPI:
         encrypted = self._db.get_config('unifi_api_key', '')
         if not encrypted:
             return ''
-        return decrypt_api_key(encrypted)
+        try:
+            return decrypt_api_key(encrypted)
+        except Exception:
+            logger.warning("Failed to decrypt saved API key — POSTGRES_PASSWORD may have changed")
+            return ''
 
     def reload_config(self):
         """Re-read settings, invalidate session + site UUID."""
