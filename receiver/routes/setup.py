@@ -86,6 +86,9 @@ def network_segments(wan_interfaces: str = None):
                 LIMIT 30
             """)
             interfaces = cur.fetchall()
+    except Exception as e:
+        logger.exception("Error querying network segments")
+        raise HTTPException(status_code=500, detail="Failed to query network segments")
     finally:
         put_conn(conn)
 

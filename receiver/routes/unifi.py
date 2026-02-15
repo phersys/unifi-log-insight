@@ -153,7 +153,7 @@ def patch_firewall_policy(policy_id: str, body: dict):
     except Exception as e:
         status = 502
         msg = str(e)
-        if hasattr(e, 'response'):
+        if hasattr(e, 'response') and e.response is not None:
             if e.response.status_code == 403:
                 msg = "Insufficient permissions. Ensure your UniFi API key belongs to a Local Admin account with Network permissions."
                 status = 403

@@ -17,7 +17,7 @@ router = APIRouter()
 
 @router.get("/api/stats")
 def get_stats(
-    time_range: str = Query("24h", description="1h,6h,24h,7d,30d"),
+    time_range: str = Query("24h", description="1h,6h,24h,7d,30d,60d"),
 ):
     cutoff = parse_time_range(time_range)
     if not cutoff:
@@ -276,7 +276,7 @@ def get_stats(
         }
     except Exception as e:
         conn.rollback()
-        logger.error("Error fetching stats: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Error fetching stats")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)
