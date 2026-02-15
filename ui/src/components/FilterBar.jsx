@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchServices, fetchInterfaces } from '../api'
-import { getInterfaceName, DIRECTION_ICONS, DIRECTION_COLORS } from '../utils'
+import { getInterfaceName, DIRECTION_ICONS, DIRECTION_COLORS, LOG_TYPE_STYLES, ACTION_STYLES } from '../utils'
 
 const LOG_TYPES = ['firewall', 'dns', 'dhcp', 'wifi', 'system']
 const TIME_RANGES = [
@@ -93,14 +93,6 @@ export default function FilterBar({ filters, onChange }) {
     onChange({ ...filters, direction: updated.length === DIRECTIONS.length ? null : updated.join(',') })
   }
 
-  const typeColors = {
-    firewall: 'bg-blue-500',
-    dns: 'bg-violet-500',
-    dhcp: 'bg-cyan-500',
-    wifi: 'bg-amber-500',
-    system: 'bg-gray-500',
-  }
-
   return (
     <div className="space-y-3">
       {/* Row 1: Log types + time range */}
@@ -110,10 +102,10 @@ export default function FilterBar({ filters, onChange }) {
             <button
               key={type}
               onClick={() => toggleType(type)}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
+              className={`px-2.5 py-1 rounded text-xs font-medium border transition-all ${
                 activeTypes.includes(type)
-                  ? `${typeColors[type]} text-white`
-                  : 'bg-gray-800 text-gray-400 hover:text-gray-300'
+                  ? LOG_TYPE_STYLES[type]
+                  : 'border-transparent text-gray-500 hover:text-gray-400'
               }`}
             >
               {type}
@@ -128,10 +120,10 @@ export default function FilterBar({ filters, onChange }) {
             <button
               key={action}
               onClick={() => toggleAction(action)}
-              className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+              className={`px-2 py-1 rounded text-xs font-medium border transition-all ${
                 activeActions.includes(action)
-                  ? action === 'block' ? 'bg-red-500/30 text-red-400' : action === 'allow' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'
-                  : 'bg-gray-800 text-gray-400 hover:text-gray-300'
+                  ? ACTION_STYLES[action]
+                  : 'border-transparent text-gray-500 hover:text-gray-400'
               }`}
             >
               {action}

@@ -1,10 +1,11 @@
 import React, { Suspense, useState, useEffect } from 'react'
 import LogStream from './components/LogStream'
 import SetupWizard from './components/SetupWizard'
+import SettingsOverlay from './components/SettingsOverlay'
 import { DashboardSkeleton } from './components/Dashboard'
 
 const Dashboard = React.lazy(() => import('./components/Dashboard'))
-import { fetchHealth, fetchConfig, fetchLatestRelease } from './api'
+import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal } from './api'
 import { loadInterfaceLabels } from './utils'
 
 const TABS = [
@@ -13,39 +14,39 @@ const TABS = [
 ]
 
 function formatShortDate(isoStr) {
-  if (!isoStr) return '—'
+  if (!isoStr) return '\u2014'
   try {
     const d = new Date(isoStr)
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) +
       ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-  } catch { return '—' }
+  } catch { return '\u2014' }
 }
 
 function formatAbuseIPDB(abuseipdb) {
-  if (!abuseipdb) return '—'
+  if (!abuseipdb) return '\u2014'
 
   // Check if paused (429 rate limited)
   if (abuseipdb.paused_until) {
     const pausedDate = new Date(abuseipdb.paused_until * 1000)
     if (pausedDate > new Date()) {
       const resumeStr = pausedDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-      return `⏸ Paused · Resumes ${resumeStr}`
+      return `\u23F8 Paused \u00B7 Resumes ${resumeStr}`
     }
   }
 
   const limit = abuseipdb.limit
   const remaining = abuseipdb.remaining
-  if (limit == null || remaining == null) return '—'
+  if (limit == null || remaining == null) return '\u2014'
   const used = limit - remaining
   // reset_at from AbuseIPDB is a Unix timestamp (seconds), not ISO string
-  let reset = '—'
+  let reset = '\u2014'
   if (abuseipdb.reset_at) {
     const ts = Number(abuseipdb.reset_at)
     const d = !isNaN(ts) && ts > 1e9 ? new Date(ts * 1000) : new Date(abuseipdb.reset_at)
-    reset = isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) +
+    reset = isNaN(d.getTime()) ? '\u2014' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) +
       ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
   }
-  return `${used.toLocaleString()}/${limit.toLocaleString()} · Reset ${reset}`
+  return `${used.toLocaleString()}/${limit.toLocaleString()} \u00B7 Reset ${reset}`
 }
 
 export default function App() {
@@ -53,10 +54,20 @@ export default function App() {
   const [health, setHealth] = useState(null)
   const [latestRelease, setLatestRelease] = useState(null)
   const [showWizard, setShowWizard] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [showReconfig, setShowReconfig] = useState(false)
   const [config, setConfig] = useState(null)
   const [configLoaded, setConfigLoaded] = useState(false)
   const [showMigrationBanner, setShowMigrationBanner] = useState(false)
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+
+  const reloadConfig = () => {
+    return fetchConfig().then(cfg => {
+      setConfig(cfg)
+      loadInterfaceLabels(cfg)
+      return cfg
+    })
+  }
 
   // Load config + interface labels in a single fetch
   useEffect(() => {
@@ -75,11 +86,20 @@ export default function App() {
             !localStorage.getItem('migration_banner_dismissed')) {
           setShowMigrationBanner(true)
         }
+        // Upgrade modal: v1.x -> v2.0 transition
+        // TODO: Generalize for future major version transitions (e.g. v3.0).
+        // Currently hardcoded to config_version < 2. When a v3.0 migration is needed,
+        // consider a migration registry pattern: [{fromVersion, toVersion, modal}].
+        if (cfg.setup_complete === true &&
+            (cfg.config_version || 0) < 2 &&
+            !cfg.upgrade_v2_dismissed) {
+          setShowUpgradeModal(true)
+        }
         setConfigLoaded(true)
       })
       .catch(err => {
         console.error('Config load failed:', err)
-        if (mounted) setConfigLoaded(true) // show app, not infinite loading
+        if (mounted) setConfigLoaded(true)
       })
     return () => { mounted = false }
   }, [])
@@ -119,10 +139,7 @@ export default function App() {
   // Show setup wizard if not configured
   if (showWizard) {
     return <SetupWizard onComplete={() => {
-      fetchConfig().then(cfg => {
-        setConfig(cfg)
-        loadInterfaceLabels(cfg)
-      }).catch(() => {})
+      reloadConfig().catch(() => {})
       setShowWizard(false)
     }} />
   }
@@ -132,25 +149,86 @@ export default function App() {
     return <SetupWizard
       reconfigMode
       onComplete={() => {
-        fetchConfig().then(cfg => {
-          setConfig(cfg)
-          loadInterfaceLabels(cfg)
-        }).catch(() => {})
+        reloadConfig().catch(() => {})
         setShowReconfig(false)
       }}
       onCancel={() => setShowReconfig(false)}
     />
   }
 
+  // Show settings overlay
+  if (showSettings) {
+    return <SettingsOverlay
+      onClose={() => {
+        reloadConfig().catch(() => {})
+        setShowSettings(false)
+      }}
+      onRestartWizard={() => {
+        setShowSettings(false)
+        setShowReconfig(true)
+      }}
+    />
+  }
+
   return (
     <div className="h-screen flex flex-col bg-gray-950">
+      {/* Upgrade modal */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
+            <h2 className="text-lg font-semibold text-gray-200 mb-3">Welcome to v{health?.version || '2.0'}!</h2>
+            <p className="text-sm text-gray-400 mb-4">UniFi API integration is now available:</p>
+            <ul className="text-sm text-gray-300 space-y-1.5 mb-5">
+              <li className="flex items-start gap-2">
+                <span className="text-blue-400 mt-0.5">&#x2022;</span>
+                Auto-detect WAN and network configuration
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-blue-400 mt-0.5">&#x2022;</span>
+                Manage firewall rule syslog from your dashboard
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-blue-400 mt-0.5">&#x2022;</span>
+                Device name resolution
+              </li>
+            </ul>
+            <p className="text-sm text-gray-400 mb-5">
+              Connect your UniFi controller to get started.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setShowUpgradeModal(false); setShowReconfig(true) }}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+              >
+                Set Up Now
+              </button>
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
+              >
+                Later
+              </button>
+              <button
+                onClick={() => {
+                  setShowUpgradeModal(false)
+                  dismissUpgradeModal().catch(() => {})
+                }}
+                className="px-4 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-400 transition-colors"
+              >
+                Don't Show Again
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Migration banner */}
       {showMigrationBanner && (
         <div className="flex items-center justify-between px-4 py-2 bg-blue-500/10 border-b border-blue-500/30 text-xs text-blue-400">
           <span>
             Your network configuration was auto-detected with default settings. Click the
             <button
-              onClick={() => { setShowMigrationBanner(false); setShowReconfig(true) }}
+              onClick={() => { setShowMigrationBanner(false); setShowSettings(true) }}
               className="underline mx-1 hover:text-blue-300"
             >
               Settings
@@ -164,7 +242,7 @@ export default function App() {
             }}
             className="text-blue-400 hover:text-blue-300 ml-4"
           >
-            ✕
+            &#x2715;
           </button>
         </div>
       )}
@@ -224,9 +302,9 @@ export default function App() {
             </>
           )}
           <button
-            onClick={() => setShowReconfig(true)}
+            onClick={() => setShowSettings(true)}
             className="ml-2 p-1.5 rounded hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
-            title="Network Settings"
+            title="Settings"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
               <path fillRule="evenodd" d="M7.84 1.804A1 1 0 0 1 8.82 1h2.36a1 1 0 0 1 .98.804l.331 1.652a6.993 6.993 0 0 1 1.929 1.115l1.598-.54a1 1 0 0 1 1.186.447l1.18 2.044a1 1 0 0 1-.205 1.251l-1.267 1.113a7.047 7.047 0 0 1 0 2.228l1.267 1.113a1 1 0 0 1 .206 1.25l-1.18 2.045a1 1 0 0 1-1.187.447l-1.598-.54a6.993 6.993 0 0 1-1.929 1.115l-.33 1.652a1 1 0 0 1-.98.804H8.82a1 1 0 0 1-.98-.804l-.331-1.652a6.993 6.993 0 0 1-1.929-1.115l-1.598.54a1 1 0 0 1-1.186-.447l-1.18-2.044a1 1 0 0 1 .205-1.251l1.267-1.114a7.05 7.05 0 0 1 0-2.227L1.821 7.773a1 1 0 0 1-.206-1.25l1.18-2.045a1 1 0 0 1 1.187-.447l1.598.54A6.992 6.992 0 0 1 7.51 3.456l.33-1.652ZM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clipRule="evenodd" />

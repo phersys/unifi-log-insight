@@ -43,7 +43,7 @@ function getVlanId(iface) {
   return match ? parseInt(match[1]) : null
 }
 
-export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNext, onBack }) {
+export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNext, onBack, nextLabel, disabled }) {
   const [segments, setSegments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -300,14 +300,14 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
           </button>
           <button
             onClick={onNext}
-            disabled={hasValidationErrors}
+            disabled={hasValidationErrors || disabled}
             className={`px-6 py-2.5 rounded-lg font-medium text-sm transition-all ${
-              hasValidationErrors
+              hasValidationErrors || disabled
                 ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
-                : 'bg-blue-500 hover:bg-blue-600 text-white'
+                : nextLabel ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'
             }`}
           >
-            Next
+            {nextLabel || 'Next'}
           </button>
         </div>
       )}

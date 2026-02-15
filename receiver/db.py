@@ -4,6 +4,7 @@ UniFi Log Insight - Database Module
 Handles PostgreSQL connection pooling, log insertion, and retention cleanup.
 """
 
+import base64
 import os
 import json
 import logging
@@ -14,6 +15,45 @@ from psycopg2 import pool, extras
 from psycopg2.extras import Json
 
 logger = logging.getLogger(__name__)
+
+
+# ── API Key Encryption ────────────────────────────────────────────────────────
+
+def _derive_fernet_key(postgres_password: str) -> bytes:
+    """Derive a Fernet encryption key from POSTGRES_PASSWORD."""
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    from cryptography.hazmat.primitives import hashes
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b'unifi-log-insight-v1',
+        iterations=100_000,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(postgres_password.encode()))
+
+
+def encrypt_api_key(api_key: str) -> str:
+    """Encrypt API key for storage in system_config."""
+    from cryptography.fernet import Fernet
+    pg_pass = os.environ.get('POSTGRES_PASSWORD', '')
+    if not pg_pass:
+        raise ValueError("POSTGRES_PASSWORD required for encryption")
+    f = Fernet(_derive_fernet_key(pg_pass))
+    return f.encrypt(api_key.encode()).decode()
+
+
+def decrypt_api_key(encrypted: str) -> str:
+    """Decrypt API key from system_config. Returns empty string on failure."""
+    from cryptography.fernet import Fernet, InvalidToken
+    pg_pass = os.environ.get('POSTGRES_PASSWORD', '')
+    if not pg_pass or not encrypted:
+        return ''
+    try:
+        f = Fernet(_derive_fernet_key(pg_pass))
+        return f.decrypt(encrypted.encode()).decode()
+    except (InvalidToken, Exception) as e:
+        logger.warning("Failed to decrypt API key (POSTGRES_PASSWORD may have changed): %s", e)
+        return ''
 
 # Column names matching the logs table
 INSERT_COLUMNS = [

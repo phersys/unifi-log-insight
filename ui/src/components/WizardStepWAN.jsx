@@ -11,7 +11,7 @@ const COMMON_WAN_INTERFACES = [
 
 const LABEL_REGEX = /[^a-zA-Z0-9 _-]/g
 
-export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onUpdateLabels, onNext, reconfigMode }) {
+export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onUpdateLabels, onNext, onBack, reconfigMode }) {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -335,7 +335,15 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
 
       {/* Navigation */}
       {!loading && !error && (
-        <div className="flex justify-end pt-2">
+        <div className="flex justify-between pt-2">
+          {onBack ? (
+            <button
+              onClick={onBack}
+              className="px-6 py-2.5 rounded-lg font-medium text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 transition-all"
+            >
+              Back
+            </button>
+          ) : <div />}
           <button
             onClick={handleNextWithDefaults}
             disabled={selected.length === 0}

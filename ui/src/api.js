@@ -94,6 +94,80 @@ export async function fetchInterfaces() {
   return resp.json()
 }
 
+// ── UniFi Settings API ───────────────────────────────────────────────────────
+
+export async function fetchUniFiSettings() {
+  const resp = await fetch(`${BASE}/settings/unifi`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function updateUniFiSettings(settings) {
+  const resp = await fetch(`${BASE}/settings/unifi`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings)
+  })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function testUniFiConnection(params) {
+  const resp = await fetch(`${BASE}/settings/unifi/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  })
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
+  return resp.json()
+}
+
+export async function dismissUpgradeModal() {
+  const resp = await fetch(`${BASE}/settings/unifi/dismiss-upgrade`, { method: 'POST' })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchUniFiNetworkConfig() {
+  const resp = await fetch(`${BASE}/setup/unifi-network-config`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+// ── Firewall API ─────────────────────────────────────────────────────────────
+
+export async function fetchFirewallPolicies() {
+  const resp = await fetch(`${BASE}/firewall/policies`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function patchFirewallPolicy(policyId, loggingEnabled, origin) {
+  const resp = await fetch(`${BASE}/firewall/policies/${policyId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ loggingEnabled, origin })
+  })
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
+  return resp.json()
+}
+
+export async function bulkUpdateFirewallLogging(policies) {
+  const resp = await fetch(`${BASE}/firewall/policies/bulk-logging`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ policies })
+  })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
 // ── Version Check ────────────────────────────────────────────────────────────
 
 export async function fetchLatestRelease() {
