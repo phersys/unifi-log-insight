@@ -181,7 +181,7 @@ On first launch, a **Setup Wizard** will guide you through configuration. You ca
 
 Connect to your UniFi Controller to auto-detect everything:
 
-1. **Connect** — Enter your controller IP and API key. The wizard tests connectivity and saves credentials.
+1. **Connect** — Enter your Unifi controller IP and Unifi API key. The wizard tests connectivity and saves credentials.
 2. **WAN Detection** — WAN interfaces are auto-detected from the controller's network config.
 3. **Network Labels** — VLANs and subnets are pre-populated from the controller. Just review and label.
 4. **Firewall Rules** — View your zone matrix and enable syslog on firewall rules directly from the wizard.
@@ -335,13 +335,13 @@ To minimise API usage, lookups follow a cache hierarchy:
 
 ### Blacklist Pre-seeding
 
-A daily pull of the AbuseIPDB blacklist (10,000 highest-risk IPs at 100% confidence) is bulk-inserted into the threat cache. Any blocked IP matching the blacklist gets an instant score from cache — no API call consumed. Uses a separate quota (5 calls/day) independent of the check quota.
+A daily pull of the AbuseIPDB blacklist (10,000 highest-risk IPs at 100% confidence) is bulk-inserted into the threat cache. Any blocked IP matching the blacklist gets an instant score from cache — no API call consumed. Uses a separate quota (5 calls/day) independent of the check individual IP quota.
 
 The blacklist runs on startup (30-second delay) and then daily at 04:00.
 
 ### Rate Limiting
 
-The system uses AbuseIPDB response headers (`X-RateLimit-Remaining`, `Retry-After`) as the single source of truth — no internal counters that desync on container rebuilds. On 429 responses, the enricher pauses automatically until the limit resets.
+The system uses AbuseIPDB response headers (`X-RateLimit-Remaining`, `Retry-After`) as the single source of truth — no internal counters that desync on container rebuilds. On 429 responses, the enricher pauses automatically until the limit resets (which is midnight UTC).
 
 ---
 
