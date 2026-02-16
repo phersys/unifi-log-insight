@@ -175,7 +175,7 @@ export default function App() {
       {/* Upgrade modal */}
       {showUpgradeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
+          <div className="bg-gray-950 border border-gray-700 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
             <h2 className="text-lg font-semibold text-gray-200 mb-3">Welcome to v{health?.version || '2.0'}!</h2>
             <p className="text-sm text-gray-400 mb-4">UniFi API integration is now available:</p>
             <ul className="text-sm text-gray-300 space-y-1.5 mb-5">
@@ -248,7 +248,7 @@ export default function App() {
       )}
 
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-900/50 shrink-0">
+      <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-950 shrink-0">
         <div className="flex items-center gap-4">
           {/* Logo */}
           <div className="flex items-center gap-2">

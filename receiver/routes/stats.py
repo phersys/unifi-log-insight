@@ -92,12 +92,18 @@ def get_stats(
 
             # Top blocked internal IPs (private src_ip only — inter-VLAN / outbound blocks)
             cur.execute(
-                "SELECT host(src_ip) as ip, COUNT(*) as count "
-                "FROM logs "
-                "WHERE timestamp >= %s AND rule_action = 'block' AND src_ip IS NOT NULL "
-                "AND (src_ip << '10.0.0.0/8' OR src_ip << '172.16.0.0/12' "
-                "    OR src_ip << '192.168.0.0/16') "
-                "GROUP BY src_ip ORDER BY count DESC LIMIT 10",
+                "WITH top_ips AS ("
+                "  SELECT src_ip, host(src_ip) as ip, COUNT(*) as count "
+                "  FROM logs "
+                "  WHERE timestamp >= %s AND rule_action = 'block' AND src_ip IS NOT NULL "
+                "  AND (src_ip << '10.0.0.0/8' OR src_ip << '172.16.0.0/12' "
+                "      OR src_ip << '192.168.0.0/16') "
+                "  GROUP BY src_ip ORDER BY count DESC LIMIT 10"
+                ") SELECT t.ip, t.count, "
+                "  COALESCE(c.device_name, c.hostname, c.oui) as device_name "
+                "FROM top_ips t "
+                "LEFT JOIN unifi_clients c ON c.ip = t.src_ip "
+                "ORDER BY t.count DESC",
                 [cutoff]
             )
             top_blocked_internal_ips = [dict(r) for r in cur.fetchall()]
@@ -228,28 +234,37 @@ def get_stats(
 
             # Top active internal IPs (most allowed traffic by source, exclude gateway IPs)
             gateway_ips = get_config(enricher_db, 'gateway_ips') or []
-            if gateway_ips:
-                cur.execute(
-                    "SELECT host(src_ip) as ip, COUNT(*) as count "
-                    "FROM logs "
-                    "WHERE timestamp >= %s AND rule_action = 'allow' AND src_ip IS NOT NULL "
-                    "AND (src_ip << '10.0.0.0/8' OR src_ip << '172.16.0.0/12' "
-                    "    OR src_ip << '192.168.0.0/16') "
-                    "AND host(src_ip) != ALL(%s) "
-                    "GROUP BY src_ip ORDER BY count DESC LIMIT 10",
-                    [cutoff, gateway_ips]
-                )
-            else:
-                cur.execute(
-                    "SELECT host(src_ip) as ip, COUNT(*) as count "
-                    "FROM logs "
-                    "WHERE timestamp >= %s AND rule_action = 'allow' AND src_ip IS NOT NULL "
-                    "AND (src_ip << '10.0.0.0/8' OR src_ip << '172.16.0.0/12' "
-                    "    OR src_ip << '192.168.0.0/16') "
-                    "GROUP BY src_ip ORDER BY count DESC LIMIT 10",
-                    [cutoff]
-                )
+            gw_filter = "  AND host(src_ip) != ALL(%s) " if gateway_ips else ""
+            params = [cutoff, gateway_ips] if gateway_ips else [cutoff]
+            cur.execute(
+                "WITH top_ips AS ("
+                "  SELECT src_ip, host(src_ip) as ip, COUNT(*) as count "
+                "  FROM logs "
+                "  WHERE timestamp >= %s AND rule_action = 'allow' AND src_ip IS NOT NULL "
+                "  AND (src_ip << '10.0.0.0/8' OR src_ip << '172.16.0.0/12' "
+                "      OR src_ip << '192.168.0.0/16') "
+                + gw_filter +
+                "  GROUP BY src_ip ORDER BY count DESC LIMIT 10"
+                ") SELECT t.ip, t.count, "
+                "  COALESCE(c.device_name, c.hostname, c.oui) as device_name "
+                "FROM top_ips t "
+                "LEFT JOIN unifi_clients c ON c.ip = t.src_ip "
+                "ORDER BY t.count DESC",
+                params
+            )
             top_active_internal_ips = [dict(r) for r in cur.fetchall()]
+
+            # Annotate gateway/WAN IPs with device names
+            gateway_vlans = get_config(enricher_db, 'gateway_ip_vlans') or {}
+            wan_ip_names = get_config(enricher_db, 'wan_ip_names') or {}
+            for ip_list in (top_blocked_internal_ips, top_active_internal_ips):
+                for item in ip_list:
+                    if not item.get('device_name'):
+                        if item['ip'] in gateway_vlans:
+                            item['device_name'] = 'Gateway'
+                            item['vlan'] = gateway_vlans[item['ip']].get('vlan')
+                        elif item['ip'] in wan_ip_names:
+                            item['device_name'] = wan_ip_names[item['ip']]
 
         conn.commit()
         return {

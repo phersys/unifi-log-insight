@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { fetchFirewallPolicies, patchFirewallPolicy, bulkUpdateFirewallLogging } from '../api'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -31,19 +31,123 @@ function buildZoneMap(zones) {
   return m
 }
 
-function getDefaultAction(policies) {
-  const derived = policies.find(p => p.metadata?.origin === 'DERIVED')
-  if (!derived) {
-    const sorted = [...policies].sort((a, b) => (b.index || 0) - (a.index || 0))
-    if (sorted.length > 0) {
-      return sorted[0].action?.type === 'BLOCK' ? 'Block All' : 'Allow All'
-    }
-    return null
+const ANY_SENTINELS = new Set(['ANY', 'ALL', 'ALL_TRAFFIC', 'ALL_PROTOCOLS', 'ALL_PORTS', 'ALL_ADDRESSES'])
+const PORT_RANGE_KEYS = new Set(['ports', 'port', 'portRange', 'portRanges', 'portRangeSet', 'portSet'])
+
+function isMeaningfulValue(value) {
+  if (value === null || value === undefined) return false
+  if (Array.isArray(value)) return value.some(isMeaningfulValue)
+  if (typeof value === 'object') return Object.values(value).some(isMeaningfulValue)
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed !== '' && !ANY_SENTINELS.has(trimmed.toUpperCase())
   }
-  const actionType = derived.action?.type || 'BLOCK'
-  if (actionType === 'BLOCK') return 'Block All'
-  const name = (derived.name || '').toLowerCase()
-  if (name.includes('return') || name.includes('established')) return 'Allow Return'
+  return true
+}
+
+function hasNonTrivialKeys(obj, allowedKeys) {
+  if (!obj || typeof obj !== 'object') return false
+  return Object.entries(obj).some(([key, val]) => !allowedKeys.has(key) && isMeaningfulValue(val))
+}
+
+function isAnyPortRange(range) {
+  if (!range || typeof range !== 'object') return false
+  const from = range.from ?? range.start ?? range.min ?? range.portFrom ?? range.port_start
+  const to = range.to ?? range.end ?? range.max ?? range.portTo ?? range.port_end
+  if (from === undefined || to === undefined) return false
+  const fromNum = Number(from)
+  const toNum = Number(to)
+  if (!Number.isFinite(fromNum) || !Number.isFinite(toNum)) return false
+  return fromNum <= 1 && toNum >= 65535
+}
+
+function isAnyPortsValue(value) {
+  if (value === null || value === undefined) return true
+  if (Array.isArray(value)) {
+    if (value.length === 0) return true
+    return value.every(v => ANY_SENTINELS.has(String(v).toUpperCase()))
+  }
+  if (typeof value === 'object') return isAnyPortRange(value)
+  if (typeof value === 'string') return ANY_SENTINELS.has(value.trim().toUpperCase())
+  return false
+}
+
+function hasProtocolConstraint(protocolFilter) {
+  if (!protocolFilter) return false
+  const protoName = (
+    protocolFilter.protocol?.name ||
+    protocolFilter.protocol ||
+    protocolFilter.name ||
+    protocolFilter.type ||
+    ''
+  ).toString().trim()
+  const isAnyProto = protoName === '' || ANY_SENTINELS.has(protoName.toUpperCase())
+  const hasExtras = Object.entries(protocolFilter).some(([key, val]) => {
+    if (['protocol', 'name', 'type', 'label'].includes(key)) return false
+    if (PORT_RANGE_KEYS.has(key)) return !isAnyPortsValue(val)
+    return isMeaningfulValue(val)
+  })
+  return !isAnyProto || hasExtras
+}
+
+function allowsReturnTraffic(policy) {
+  if (policy.action?.type !== 'ALLOW') return false
+  if (policy.action?.allowReturnTraffic === true) return true
+  const csf = policy.connectionStateFilter
+  return Array.isArray(csf) && csf.some(s => s === 'ESTABLISHED' || s === 'RELATED')
+}
+
+function isReturnBlanket(policy, zoneKeys) {
+  if (!allowsReturnTraffic(policy)) return false
+  if (hasNonTrivialKeys(policy.source, zoneKeys)) return false
+  if (hasNonTrivialKeys(policy.destination, zoneKeys)) return false
+  if (hasProtocolConstraint(policy.ipProtocolScope?.protocolFilter)) return false
+  if (Array.isArray(policy.connectionStateFilter) && policy.connectionStateFilter.length > 0) {
+    const states = policy.connectionStateFilter.map(s => String(s).toUpperCase())
+    if (!states.every(s => s === 'ESTABLISHED' || s === 'RELATED')) return false
+  }
+  return true
+}
+
+function getDefaultAction(policies) {
+  // Baseline considers USER_DEFINED + SYSTEM_DEFINED (enabled only).
+  // DERIVED policies are device-specific auto-rules and don't set zone-pair posture.
+  const candidates = policies.filter(p =>
+    p.enabled !== false && p.metadata?.origin !== 'DERIVED'
+  )
+
+  if (candidates.length === 0) {
+    return policies.length > 0 ? 'Block All' : null
+  }
+
+  // Sort by index ascending (firewall evaluation order)
+  const sorted = [...candidates].sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+
+  // A "blanket" policy matches all traffic — no specific conditions.
+  // Policies with meaningful filters are specific.
+  const zoneKeys = new Set(['zoneId', 'zoneType', 'type', 'name', 'id'])
+  const isBlanket = (p) => {
+    if (hasNonTrivialKeys(p.source, zoneKeys)) return false
+    if (hasNonTrivialKeys(p.destination, zoneKeys)) return false
+    if (isMeaningfulValue(p.connectionStateFilter)) return false
+    if (hasProtocolConstraint(p.ipProtocolScope?.protocolFilter)) return false
+    return true
+  }
+
+  // First blanket policy in evaluation order = effective catch-all.
+  // It matches all traffic not caught by earlier specific rules.
+  const effectiveCatchAll = sorted.find(isBlanket)
+
+  if (!effectiveCatchAll || effectiveCatchAll.action?.type === 'BLOCK') {
+    // Effective baseline is BLOCK — check if return/established is allowed before it
+    const limit = effectiveCatchAll?.index ?? Infinity
+    const hasReturn = sorted.some(p =>
+      (p.index ?? 0) < limit &&
+      isReturnBlanket(p, zoneKeys)
+    )
+    return hasReturn ? 'Allow Return' : 'Block All'
+  }
+
   return 'Allow All'
 }
 
@@ -56,11 +160,11 @@ function buildMatrixData(policies, zones) {
       const pair = policies.filter(
         p => p.source?.zoneId === srcId && p.destination?.zoneId === dstId
       )
-      const customCount = pair.filter(p => p.metadata?.origin !== 'DERIVED').length
+      const policyCount = pair.length
       const defaultAction = srcId === dstId && pair.length === 0
         ? null
         : getDefaultAction(pair)
-      cells[key] = { defaultAction, customCount }
+      cells[key] = { defaultAction, policyCount }
     }
   }
   return cells
@@ -88,13 +192,14 @@ function cellStyle(action, selected) {
 
 // ── Toggle Switch (matches UniFi: 32×16 track, 14×14 knob) ─────────────────
 
-function SyslogToggle({ checked, disabled, onChange }) {
+function SyslogToggle({ checked, disabled, onChange, title }) {
   return (
     <button
       onClick={() => !disabled && onChange(!checked)}
       disabled={disabled}
       className="relative"
       aria-label="Toggle syslog"
+      title={title}
     >
       <div
         className={`w-8 h-4 rounded-full transition-colors duration-200 ${
@@ -226,8 +331,8 @@ function ZoneMatrix({ zones, cells, selectedCell, onSelectCell, totalPolicyCount
                         className={`block w-full px-2.5 py-1.5 text-center font-medium whitespace-nowrap transition-colors cursor-pointer ${cornerClass} ${cellStyle(cell.defaultAction, sel)}`}
                       >
                         {cell.defaultAction}
-                        {cell.customCount > 0 && (
-                          <span className="ml-1 opacity-70">({cell.customCount})</span>
+                        {cell.policyCount > 0 && (
+                          <span className="ml-1 opacity-70">({cell.policyCount})</span>
                         )}
                       </button>
                     </td>
@@ -236,6 +341,14 @@ function ZoneMatrix({ zones, cells, selectedCell, onSelectCell, totalPolicyCount
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr>
+              <td />
+              <td colSpan={zones.length + 1} className="text-[11px] text-[#676f79] pt-2 pb-4">
+                Zone pairs labels may differ slightly from the UniFi Controller due to custom rule evaluation.
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
@@ -256,17 +369,17 @@ const FILTER_OPTIONS = [
 function FilterBar({ filters, onFilterChange, onBulk, bulkAction, zoneScopeLabel }) {
   return (
     <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {FILTER_OPTIONS.map(opt => (
           <label
             key={opt.key}
-            className="flex items-center gap-1.5 text-[12px] text-[#cbced2] cursor-pointer select-none hover:text-[#f9fafa] transition-colors"
+            className="flex items-center gap-1.5 text-[11px] text-[#cbced2] cursor-pointer select-none hover:text-[#f9fafa] transition-colors"
           >
             <input
               type="checkbox"
               checked={filters[opt.key]}
               onChange={() => onFilterChange({ ...filters, [opt.key]: !filters[opt.key] })}
-              className="w-3.5 h-3.5 rounded-sm border-[#42474d] bg-transparent text-[#4797ff] focus:ring-0 focus:ring-offset-0 cursor-pointer accent-[#4797ff]"
+              className="w-3 h-3 rounded-sm border-[#42474d] bg-transparent text-[#4797ff] focus:ring-0 focus:ring-offset-0 cursor-pointer accent-[#4797ff]"
             />
             {opt.label}
           </label>
@@ -308,7 +421,7 @@ function FilterBar({ filters, onFilterChange, onBulk, bulkAction, zoneScopeLabel
 
 // ── PolicyRow ────────────────────────────────────────────────────────────────
 
-function PolicyRow({ policy, zoneMap, onToggle, toggling }) {
+function PolicyRow({ policy, zoneMap, onToggle, toggling, isSubRow }) {
   const origin = policy.metadata?.origin
   const isDerived = origin === 'DERIVED'
   const isDisabled = policy.enabled === false
@@ -319,18 +432,12 @@ function PolicyRow({ policy, zoneMap, onToggle, toggling }) {
   return (
     <tr className={`border-b border-white/[0.07] hover:bg-white/[0.02] ${isDisabled ? 'opacity-40 pointer-events-none' : ''}`}>
       {/* Name */}
-      <td className="px-2 pr-8 py-0 h-8">
+      <td className={`${isSubRow ? 'pl-7' : 'px-2'} pr-8 py-0 h-8`}>
         <span
-          className={`block truncate text-[12px] ${isDerived ? 'text-[#676f79]' : 'text-[#f9fafa]'}`}
-          title={policy.name}
+          className={`block truncate text-[12px] ${isDerived ? 'text-[#676f79]' : isSubRow ? 'text-[#cbced2]' : 'text-[#f9fafa]'}`}
+          title={policy.description || policy.name}
         >
           {policy.name || '(unnamed)'}
-        </span>
-      </td>
-      {/* Description */}
-      <td className="px-2 pr-8 py-0 h-8">
-        <span className="block truncate text-[11px] text-[#676f79]" title={policy.description || ''}>
-          {policy.description || ''}
         </span>
       </td>
       {/* Action */}
@@ -347,7 +454,7 @@ function PolicyRow({ policy, zoneMap, onToggle, toggling }) {
       </td>
       {/* Protocol */}
       <td className="px-2 pr-8 py-0 h-8 text-[11px] text-[#676f79] uppercase truncate">
-        {policy.ipProtocolScope?.protocolFilter?.name || policy.protocol || 'All'}
+        {policy.ipProtocolScope?.protocolFilter?.protocol?.name || policy.protocol || 'All'}
       </td>
       {/* Src Zone */}
       <td className="px-2 pr-8 py-0 h-8 text-[11px] text-[#cbced2] truncate">
@@ -367,7 +474,87 @@ function PolicyRow({ policy, zoneMap, onToggle, toggling }) {
           checked={logging}
           disabled={!canToggle}
           onChange={(val) => onToggle(policy.id, val, origin)}
+          title={isDerived ? 'Derived policies cannot be changed' : undefined}
         />
+      </td>
+    </tr>
+  )
+}
+
+// ── GroupHeaderRow ──────────────────────────────────────────────────────────
+
+function GroupHeaderRow({ group, expanded, onToggle, onToggleExpand, toggling }) {
+  const { name, policies } = group
+  const count = policies.length
+
+  const actions = new Set(policies.map(p => p.action?.type || ''))
+  const uniformAction = actions.size === 1 ? [...actions][0] : null
+
+  const protocols = new Set(policies.map(p =>
+    p.ipProtocolScope?.protocolFilter?.protocol?.name || p.protocol || 'All'
+  ))
+  const uniformProtocol = protocols.size === 1 ? [...protocols][0] : null
+
+  const controllable = policies.filter(p =>
+    p.metadata?.origin !== 'DERIVED' && p.enabled !== false
+  )
+  const enabledCount = controllable.filter(p => p.loggingEnabled).length
+  const allEnabled = enabledCount === controllable.length && controllable.length > 0
+  const noneEnabled = enabledCount === 0
+  const canToggle = controllable.length > 0 && !toggling
+
+  return (
+    <tr
+      className="border-b border-white/[0.07] hover:bg-white/[0.04] cursor-pointer"
+      onClick={() => onToggleExpand(name)}
+    >
+      <td className="px-2 pr-8 py-0 h-8">
+        <span className="flex items-center gap-1.5 text-[12px] text-[#f9fafa]">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor"
+            className={`w-3 h-3 text-[#676f79] shrink-0 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
+          >
+            <path fillRule="evenodd" d="M6.22 4.22a.75.75 0 011.06 0l3.25 3.25a.75.75 0 010 1.06l-3.25 3.25a.75.75 0 01-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+          </svg>
+          <span className="truncate" title={name}>{name}</span>
+          <span className="shrink-0 ml-1 px-1.5 py-0.5 rounded-full bg-white/[0.07] text-[10px] text-[#676f79] font-medium">
+            {count}
+          </span>
+        </span>
+      </td>
+      <td className="px-2 pr-8 py-0 h-8">
+        {uniformAction ? (
+          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
+            uniformAction === 'BLOCK'
+              ? 'bg-[#f0383b]/15 text-[#f36267]'
+              : uniformAction === 'ALLOW'
+                ? 'bg-[#38cc65]/15 text-[#61d684]'
+                : 'bg-white/[0.04] text-[#676f79]'
+          }`}>
+            {uniformAction}
+          </span>
+        ) : (
+          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-white/[0.04] text-[#676f79]">
+            Mixed
+          </span>
+        )}
+      </td>
+      <td className="px-2 pr-8 py-0 h-8 text-[11px] text-[#676f79] uppercase truncate">
+        {uniformProtocol || 'Mixed'}
+      </td>
+      <td className="px-2 pr-8 py-0 h-8 text-[11px] text-[#676f79] truncate">Multiple</td>
+      <td className="px-2 pr-8 py-0 h-8 text-[11px] text-[#676f79] truncate">Multiple</td>
+      <td className="px-2 pr-8 py-0 h-8 text-[11px] font-mono text-[#676f79]">&mdash;</td>
+      <td className="px-2 py-0 h-8" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-1">
+          <SyslogToggle
+            checked={allEnabled}
+            disabled={!canToggle}
+            onChange={(val) => onToggle(group, val)}
+          />
+          {!allEnabled && !noneEnabled && canToggle && (
+            <span className="text-[9px] text-amber-400">&bull;</span>
+          )}
+        </div>
       </td>
     </tr>
   )
@@ -439,6 +626,17 @@ export default function FirewallRules() {
   const [filters, setFilters] = useState({
     ipv4: true, ipv6: true, builtIn: true, custom: true, inUse: true, paused: true,
   })
+  const [expandedGroups, setExpandedGroups] = useState(new Set())
+
+  function toggleGroup(name) {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      next.has(name) ? next.delete(name) : next.add(name)
+      return next
+    })
+  }
+
+  useEffect(() => setExpandedGroups(new Set()), [selectedCell, filters])
 
   useEffect(() => { loadPolicies() }, [])
 
@@ -499,8 +697,24 @@ export default function FirewallRules() {
       return true
     })
 
-    return result.sort((a, b) => (a.index || 0) - (b.index || 0))
+    const originRank = { USER_DEFINED: 0, SYSTEM_DEFINED: 1, DERIVED: 2 }
+    return result.sort((a, b) => {
+      const ao = originRank[a.metadata?.origin] ?? 1
+      const bo = originRank[b.metadata?.origin] ?? 1
+      if (ao !== bo) return ao - bo
+      return (a.name || '').localeCompare(b.name || '')
+    })
   }, [data, selectedCell, filters])
+
+  const groupedPolicies = useMemo(() => {
+    const groupMap = new Map()
+    for (const p of filteredPolicies) {
+      const key = p.name || '(unnamed)'
+      if (!groupMap.has(key)) groupMap.set(key, { name: key, policies: [] })
+      groupMap.get(key).policies.push(p)
+    }
+    return Array.from(groupMap.values())
+  }, [filteredPolicies])
 
   const { controllableTotal, controllableLoggingEnabled } = useMemo(() => {
     if (!data?.policies) return { controllableTotal: 0, controllableLoggingEnabled: 0 }
@@ -523,6 +737,42 @@ export default function FirewallRules() {
           p.id === policyId ? { ...p, loggingEnabled } : p
         ),
       }))
+    } catch (err) {
+      setError(err.message)
+      setTimeout(() => setError(null), 5000)
+    } finally {
+      setToggling(false)
+    }
+  }
+
+  async function handleGroupToggle(group, enableAll) {
+    const eligible = group.policies.filter(p =>
+      p.metadata?.origin !== 'DERIVED' &&
+      p.enabled !== false &&
+      p.loggingEnabled !== enableAll
+    )
+    if (!eligible.length) return
+
+    setToggling(true)
+    try {
+      const result = await bulkUpdateFirewallLogging(
+        eligible.map(p => ({ id: p.id, loggingEnabled: enableAll }))
+      )
+      if (result.failed > 0) {
+        // Partial failure — re-fetch to avoid state drift
+        await loadPolicies()
+        setError(`${result.success} updated, ${result.failed} failed`)
+        setTimeout(() => setError(null), 5000)
+      } else {
+        // All succeeded — optimistic local update (no reload flicker)
+        const eligibleIds = new Set(eligible.map(e => e.id))
+        setData(prev => ({
+          ...prev,
+          policies: prev.policies.map(p =>
+            eligibleIds.has(p.id) ? { ...p, loggingEnabled: enableAll } : p
+          ),
+        }))
+      }
     } catch (err) {
       setError(err.message)
       setTimeout(() => setError(null), 5000)
@@ -628,8 +878,7 @@ export default function FirewallRules() {
       <div className="scroll-fade border-b border-white/[0.07]">
         <table className="w-full table-fixed border-collapse">
           <colgroup>
-            <col style={{ width: '22%' }} />
-            <col style={{ width: '18%' }} />
+            <col style={{ width: '40%' }} />
             <col style={{ width: '9%' }} />
             <col style={{ width: '8%' }} />
             <col style={{ width: '13%' }} />
@@ -640,7 +889,6 @@ export default function FirewallRules() {
           <thead>
             <tr className="border-b border-white/[0.07]">
               <th className="px-2 pr-8 py-0 h-8 text-[11px] font-semibold text-[#f9fafa] uppercase tracking-[0.5px] text-left">Name</th>
-              <th className="px-2 pr-8 py-0 h-8 text-[11px] font-semibold text-[#f9fafa] uppercase tracking-[0.5px] text-left">Description</th>
               <th className="px-2 pr-8 py-0 h-8 text-[11px] font-semibold text-[#f9fafa] uppercase tracking-[0.5px] text-left">Action</th>
               <th className="px-2 pr-8 py-0 h-8 text-[11px] font-semibold text-[#f9fafa] uppercase tracking-[0.5px] text-left">Protocol</th>
               <th className="px-2 pr-8 py-0 h-8 text-[11px] font-semibold text-[#f9fafa] uppercase tracking-[0.5px] text-left">Src Zone</th>
@@ -650,16 +898,43 @@ export default function FirewallRules() {
             </tr>
           </thead>
           <tbody>
-            {filteredPolicies.map(p => (
-              <PolicyRow
-                key={p.id}
-                policy={p}
-                zoneMap={zoneMap}
-                onToggle={handleToggle}
-                toggling={toggling}
-              />
-            ))}
-            {filteredPolicies.length === 0 && (
+            {groupedPolicies.map(group => {
+              if (group.policies.length === 1) {
+                const p = group.policies[0]
+                return (
+                  <PolicyRow
+                    key={p.id}
+                    policy={p}
+                    zoneMap={zoneMap}
+                    onToggle={handleToggle}
+                    toggling={toggling}
+                  />
+                )
+              }
+              const expanded = expandedGroups.has(group.name)
+              return (
+                <React.Fragment key={`group-${group.name}`}>
+                  <GroupHeaderRow
+                    group={group}
+                    expanded={expanded}
+                    onToggle={handleGroupToggle}
+                    onToggleExpand={toggleGroup}
+                    toggling={toggling}
+                  />
+                  {expanded && group.policies.map(p => (
+                    <PolicyRow
+                      key={p.id}
+                      policy={p}
+                      zoneMap={zoneMap}
+                      onToggle={handleToggle}
+                      toggling={toggling}
+                      isSubRow
+                    />
+                  ))}
+                </React.Fragment>
+              )
+            })}
+            {groupedPolicies.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-2 py-10 text-center text-sm text-[#676f79]">
                   No policies match the current filters

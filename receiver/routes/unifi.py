@@ -1,12 +1,13 @@
-"""UniFi settings, connection test, and firewall proxy endpoints."""
+"""UniFi settings, connection test, firewall proxy, and device endpoints."""
 
 import logging
 import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from psycopg2.extras import RealDictCursor
 
 from db import get_config, set_config, encrypt_api_key, decrypt_api_key
-from deps import enricher_db, unifi_api, signal_receiver
+from deps import get_conn, put_conn, enricher_db, unifi_api, signal_receiver
 
 logger = logging.getLogger('api.unifi')
 
@@ -70,7 +71,7 @@ def test_unifi_connection(body: dict):
                 raise HTTPException(
                     status_code=400,
                     detail="Saved API key could not be decrypted. Please re-enter your API key.",
-                )
+                ) from None
     else:
         api_key = body.get('api_key', '').strip()
 
@@ -180,3 +181,153 @@ def bulk_update_logging(body: dict):
     except Exception as e:
         logger.error("Bulk firewall update failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Phase 2: Device Endpoints ────────────────────────────────────────────
+
+@router.get("/api/unifi/clients")
+def list_unifi_clients(
+    search: str = Query(None, description="Filter by name, hostname, IP, or MAC"),
+    limit: int = Query(200, ge=1, le=1000),
+):
+    """Return cached UniFi clients from the database."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if search:
+                cur.execute("""
+                    SELECT mac, host(ip) as ip, device_name, hostname, oui,
+                           network, essid, vlan, is_fixed_ip, is_wired,
+                           last_seen, updated_at
+                    FROM unifi_clients
+                    WHERE device_name ILIKE %s OR hostname ILIKE %s
+                       OR host(ip) LIKE %s OR mac::text ILIKE %s
+                    ORDER BY last_seen DESC NULLS LAST
+                    LIMIT %s
+                """, [f'%{search}%', f'%{search}%', f'%{search}%',
+                      f'%{search}%', limit])
+            else:
+                cur.execute("""
+                    SELECT mac, host(ip) as ip, device_name, hostname, oui,
+                           network, essid, vlan, is_fixed_ip, is_wired,
+                           last_seen, updated_at
+                    FROM unifi_clients
+                    ORDER BY last_seen DESC NULLS LAST
+                    LIMIT %s
+                """, [limit])
+            rows = cur.fetchall()
+        conn.commit()
+        clients = []
+        for r in rows:
+            d = dict(r)
+            if d.get('mac'):
+                d['mac'] = str(d['mac'])
+            for ts_key in ('last_seen', 'updated_at'):
+                if d.get(ts_key):
+                    d[ts_key] = d[ts_key].isoformat()
+            clients.append(d)
+        return {'clients': clients, 'total': len(clients)}
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Error fetching UniFi clients")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+    finally:
+        put_conn(conn)
+
+
+@router.get("/api/unifi/devices")
+def list_unifi_devices():
+    """Return cached UniFi infrastructure devices from the database."""
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT mac, host(ip) as ip, device_name, model, shortname,
+                       device_type, firmware, serial, state, uptime, updated_at
+                FROM unifi_devices
+                ORDER BY device_name NULLS LAST, model
+            """)
+            rows = cur.fetchall()
+        conn.commit()
+        devices = []
+        for r in rows:
+            d = dict(r)
+            if d.get('mac'):
+                d['mac'] = str(d['mac'])
+            if d.get('updated_at'):
+                d['updated_at'] = d['updated_at'].isoformat()
+            devices.append(d)
+        return {'devices': devices, 'total': len(devices)}
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Error fetching UniFi devices")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+    finally:
+        put_conn(conn)
+
+
+@router.get("/api/unifi/status")
+def unifi_poll_status():
+    """Return current UniFi polling status."""
+    settings = unifi_api.get_settings_info()
+    return {
+        'enabled': settings['enabled'],
+        'status': settings['status'],
+        'features': settings['features'],
+        'poll_interval': settings['poll_interval'],
+    }
+
+
+@router.post("/api/unifi/backfill-device-names")
+def backfill_device_names(body: dict):
+    """On-demand backfill: patch historical logs with device names.
+
+    Body: { "since": "2025-01-01T00:00:00Z" }
+    Uses MAC-based join for src (DHCP-safe), time-bounded IP for dst.
+    """
+    since = body.get('since')
+    if not since:
+        raise HTTPException(status_code=400, detail="'since' date is required")
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            # src_device_name: MAC-based join (stable across DHCP changes)
+            cur.execute("""
+                UPDATE logs
+                SET src_device_name = COALESCE(c.device_name, c.hostname, c.oui)
+                FROM unifi_clients c
+                WHERE logs.mac_address = c.mac
+                  AND logs.src_device_name IS NULL
+                  AND logs.timestamp >= %s::timestamptz
+                  AND COALESCE(c.device_name, c.hostname, c.oui) IS NOT NULL
+            """, [since])
+            src_patched = cur.rowcount
+
+            # dst_device_name: IP-based join with time window to limit DHCP misattribution
+            cur.execute("""
+                UPDATE logs
+                SET dst_device_name = COALESCE(c.device_name, c.hostname, c.oui)
+                FROM unifi_clients c
+                WHERE logs.dst_ip = c.ip
+                  AND logs.dst_device_name IS NULL
+                  AND logs.timestamp >= %s::timestamptz
+                  AND logs.timestamp >= c.last_seen - INTERVAL '1 day'
+                  AND COALESCE(c.device_name, c.hostname, c.oui) IS NOT NULL
+            """, [since])
+            dst_patched = cur.rowcount
+
+        conn.commit()
+        logger.info("Device name backfill: %d src, %d dst patched (since %s)",
+                     src_patched, dst_patched, since)
+        return {
+            'success': True,
+            'src_patched': src_patched,
+            'dst_patched': dst_patched,
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Device name backfill failed")
+        raise HTTPException(status_code=500, detail="Backfill failed") from e
+    finally:
+        put_conn(conn)

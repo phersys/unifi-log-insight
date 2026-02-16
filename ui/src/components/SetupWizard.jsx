@@ -84,14 +84,14 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
       const netConfig = await fetchUniFiNetworkConfig()
       setApiNetConfig(netConfig)
       if (netConfig.wan_interfaces?.length) {
-        // Keep wanInterfaces aligned 1:1 with apiNetConfig.wan_interfaces
-        // so idx-based lookups in Steps 2-3 stay correct.
-        // Inactive WANs are filtered out at save time.
-        setWanInterfaces(netConfig.wan_interfaces.map(w => w.physical_interface))
+        // Only select active WANs (those with a wan_ip); inactive WANs shown dimmed
+        setWanInterfaces(
+          netConfig.wan_interfaces.filter(w => w.active || w.wan_ip).map(w => w.physical_interface)
+        )
         const newLabels = { ...interfaceLabels }
-        const wanCount = netConfig.wan_interfaces.length
+        const totalWans = netConfig.wan_interfaces.length
         netConfig.wan_interfaces.forEach((w, idx) => {
-          newLabels[w.physical_interface] = wanCount === 1 ? 'WAN' : `WAN ${idx + 1}`
+          newLabels[w.physical_interface] = totalWans === 1 ? 'WAN' : `WAN ${idx + 1}`
         })
         for (const n of netConfig.networks || []) {
           newLabels[n.interface] = n.name || n.interface
@@ -113,6 +113,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
 
   // API path: update a WAN physical interface name
   const handleApiWanInterfaceChange = (idx, value) => {
+    if (idx < 0 || idx >= wanInterfaces.length) return
     const oldIface = wanInterfaces[idx]
     const newIface = value.trim()
     if (!newIface || newIface === oldIface) return
@@ -139,12 +140,9 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
     setSaving(true)
     setSaveError(null)
     try {
-      // For API path, exclude inactive WANs (no wan_ip) from saved config
-      const activeWanInterfaces = apiNetConfig
-        ? wanInterfaces.filter((_, idx) => apiNetConfig.wan_interfaces?.[idx]?.wan_ip)
-        : wanInterfaces
+      // wanInterfaces already only contains active WANs (inactive excluded at selection time)
       await saveSetupConfig({
-        wan_interfaces: activeWanInterfaces,
+        wan_interfaces: wanInterfaces,
         interface_labels: interfaceLabels,
         wizard_path: wizardPath,
       })
@@ -158,7 +156,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
   return (
     <div className="h-screen flex flex-col bg-gray-950">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-900/50 shrink-0">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-950 shrink-0">
         <div className="flex items-center gap-3">
           <svg viewBox="0 0 24 24" className="w-7 h-7 text-blue-400" fill="none" stroke="currentColor">
             <circle cx="12" cy="12" r="10.5" strokeWidth="1.5" strokeOpacity="0.4" />
@@ -239,39 +237,53 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                   </div>
 
                   <div className="space-y-3">
-                    {(apiNetConfig?.wan_interfaces || []).map((w, idx) => (
-                      <div key={idx} className="p-4 rounded-lg border border-gray-700 bg-gray-800/50">
-                        <div className="flex items-center gap-3 mb-3">
-                          <input
-                            type="checkbox"
-                            readOnly
-                            checked={wanInterfaces.includes(w.physical_interface)}
-                            className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 pointer-events-none"
-                          />
-                          <span className="text-sm font-semibold text-gray-200">{w.name}</span>
-                          {w.wan_ip && (
-                            <span className="text-xs font-mono text-gray-400">{w.wan_ip}</span>
-                          )}
-                          {!w.wan_ip && (
-                            <span className="text-xs text-yellow-400/80">(inactive)</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4 ml-7 text-xs text-gray-400">
-                          <span>Type: {w.type || 'unknown'}</span>
-                          <span>|</span>
-                          <div className="flex items-center gap-2">
-                            <label className="text-gray-400">Interface:</label>
+                    {(apiNetConfig?.wan_interfaces || []).map((w) => {
+                      const isActive = w.active || !!w.wan_ip
+                      const wanIdx = wanInterfaces.indexOf(w.physical_interface)
+                      return (
+                        <div key={w.physical_interface} className="p-4 rounded-lg border border-gray-700">
+                          <div className="flex items-center gap-3 mb-3">
                             <input
-                              type="text"
-                              value={wanInterfaces[idx] || w.physical_interface}
-                              onChange={e => handleApiWanInterfaceChange(idx, e.target.value)}
-                              className="w-24 px-2 py-1 rounded bg-gray-900 border border-gray-600 font-mono text-xs text-gray-200 focus:border-blue-500 focus:outline-none"
+                              type="checkbox"
+                              readOnly
+                              checked={isActive}
+                              disabled={!isActive}
+                              className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 pointer-events-none"
                             />
-                            <span className="text-gray-500">(auto-detected)</span>
+                            <span className="text-sm font-semibold text-gray-200">{w.name.replace(/\s*\(WAN\d*\)\s*$/i, '')}</span>
+                            {interfaceLabels[w.physical_interface] && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
+                                {interfaceLabels[w.physical_interface]}
+                              </span>
+                            )}
+                            {w.wan_ip && (
+                              <span className="text-xs font-mono text-gray-400">{w.wan_ip}</span>
+                            )}
+                            {!isActive && (
+                              <span className="text-xs text-yellow-400/80">(inactive)</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 ml-7 text-xs text-gray-400">
+                            <span>Type: {w.type || 'unknown'}</span>
+                            {isActive && (
+                              <>
+                                <span>|</span>
+                                <div className="flex items-center gap-2">
+                                  <label className="text-gray-400">Interface:</label>
+                                  <input
+                                    type="text"
+                                    value={wanIdx >= 0 ? wanInterfaces[wanIdx] : w.physical_interface}
+                                    onChange={e => handleApiWanInterfaceChange(wanIdx, e.target.value)}
+                                    className="w-24 px-2 py-1 rounded bg-gray-900 border border-gray-600 font-mono text-xs text-gray-200 focus:border-blue-500 focus:outline-none"
+                                  />
+                                  <span className="text-gray-500">(auto-detected)</span>
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
 
                   {(!apiNetConfig?.wan_interfaces?.length) && (
@@ -280,7 +292,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                     </div>
                   )}
 
-                  {(apiNetConfig?.wan_interfaces || []).some(w => !w.wan_ip) && (
+                  {(apiNetConfig?.wan_interfaces || []).some(w => !w.active && !w.wan_ip) && (
                     <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
                       <p className="text-sm text-yellow-400">
                         Inactive WAN interfaces are excluded from labeling. If you activate
@@ -338,7 +350,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                   <div className="overflow-hidden rounded-lg border border-gray-700">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-gray-800/70 text-xs text-gray-400">
+                        <tr className="text-xs text-gray-400">
                           <th className="px-4 py-2 text-left font-medium">Interface</th>
                           <th className="px-4 py-2 text-left font-medium">Sample IP</th>
                           <th className="px-4 py-2 text-left font-medium">Label</th>
@@ -469,13 +481,13 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                     <button
                       onClick={handleFinish}
                       disabled={saving}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-emerald-500 hover:bg-emerald-600 text-white disabled:opacity-50 transition-all"
+                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 transition-all"
                     >
                       {saving ? 'Saving...' : 'Finish'}
                     </button>
                   </div>
 
-                  <div className="rounded-lg border border-gray-700 bg-gray-800/30 p-4">
+                  <div className="rounded-lg border border-gray-700 p-4">
                     <FirewallRules />
                   </div>
 
@@ -496,7 +508,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                     <button
                       onClick={handleFinish}
                       disabled={saving}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-emerald-500 hover:bg-emerald-600 text-white disabled:opacity-50 transition-all"
+                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 transition-all"
                     >
                       {saving ? 'Saving...' : 'Finish'}
                     </button>

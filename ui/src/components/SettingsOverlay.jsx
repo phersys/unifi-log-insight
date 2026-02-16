@@ -65,8 +65,17 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-900/50 shrink-0">
-        <h1 className="text-lg font-semibold text-gray-200">Settings</h1>
+      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-950 shrink-0">
+        <div className="flex items-center gap-3">
+          <svg viewBox="0 0 24 24" className="w-7 h-7 text-blue-400" fill="none" stroke="currentColor">
+            <circle cx="12" cy="12" r="10.5" strokeWidth="1.5" strokeOpacity="0.4" />
+            <path d="M8.5 7.5v5.5a3.5 3.5 0 0 0 7 0V7.5" strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
+          <div>
+            <h1 className="text-lg font-semibold text-gray-200">UniFi Log Insight</h1>
+            <p className="text-xs text-gray-400">Settings</p>
+          </div>
+        </div>
         <button
           onClick={onClose}
           className="p-1.5 rounded hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
@@ -97,7 +106,7 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
               )}
             </div>
             {unifiEnabled ? (
-              <div className="rounded-lg border border-gray-700 bg-gray-800/40 px-4 py-3">
+              <div className="rounded-lg border border-gray-700 bg-gray-950 px-4 py-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-200">
                     {unifiSettings?.host || 'UniFi Gateway'}
@@ -114,7 +123,7 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
                 </div>
               </div>
             ) : (
-              <div className="rounded-lg border border-gray-700 bg-gray-800/40 px-4 py-3">
+              <div className="rounded-lg border border-gray-700 bg-gray-950 px-4 py-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-500">Not configured</span>
                   <button
@@ -136,7 +145,7 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
             {wanCards.length > 0 ? (
               <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                 {wanCards.map(wan => (
-                  <div key={wan.iface} className="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-800/40 px-4 py-3">
+                  <div key={wan.iface} className="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-950 px-4 py-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-gray-200 truncate">
@@ -174,7 +183,7 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
                 ))}
               </div>
             ) : (
-              <div className="rounded-lg border border-gray-700 bg-gray-800/30 p-6 text-center text-sm text-gray-500">
+              <div className="rounded-lg border border-gray-700 bg-gray-950 p-6 text-center text-sm text-gray-500">
                 No WAN interfaces configured
               </div>
             )}
@@ -188,7 +197,7 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
             {networkCards.length > 0 ? (
               <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                 {networkCards.map(net => (
-                  <div key={net.iface} className="flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800/40 px-4 py-3">
+                  <div key={net.iface} className="flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-950 px-4 py-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-gray-200 truncate">{net.label}</span>
@@ -209,7 +218,7 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
                 ))}
               </div>
             ) : (
-              <div className="rounded-lg border border-gray-700 bg-gray-800/30 p-6 text-center text-sm text-gray-500">
+              <div className="rounded-lg border border-gray-700 bg-gray-950 p-6 text-center text-sm text-gray-500">
                 No network labels configured
               </div>
             )}
@@ -221,11 +230,11 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
               Firewall Rules
             </h2>
             {unifiEnabled ? (
-              <div className="rounded-lg border border-gray-700 bg-gray-800/30 p-4">
+              <div className="rounded-lg border border-gray-700 bg-gray-950 p-4">
                 <FirewallRules />
               </div>
             ) : (
-              <div className="rounded-lg border border-gray-700 bg-gray-800/30 p-6 text-center">
+              <div className="rounded-lg border border-gray-700 bg-gray-950 p-6 text-center">
                 <p className="text-sm text-gray-400 mb-3">
                   Connect your UniFi controller to manage firewall rules.
                 </p>

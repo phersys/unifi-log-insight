@@ -88,7 +88,7 @@ def network_segments(wan_interfaces: str = None):
             interfaces = cur.fetchall()
     except Exception as e:
         logger.exception("Error querying network segments")
-        raise HTTPException(status_code=500, detail="Failed to query network segments")
+        raise HTTPException(status_code=500, detail="Failed to query network segments") from e
     finally:
         put_conn(conn)
 
@@ -188,6 +188,9 @@ def list_interfaces():
                   AND (interface_in IS NOT NULL OR interface_out IS NOT NULL)
             """)
             interfaces = [row[0] for row in cur.fetchall() if row[0]]
+    except Exception as e:
+        logger.exception("Error querying interfaces")
+        raise HTTPException(status_code=500, detail="Failed to query interfaces") from e
     finally:
         put_conn(conn)
 

@@ -81,7 +81,7 @@ export default function UniFiConnectionForm({ onSuccess, onSkip, envApiKey, envH
         </div>
       )}
 
-      <div className="space-y-3 p-4 rounded-lg border border-gray-700 bg-gray-800/50">
+      <div className="space-y-3 p-4 rounded-lg border border-gray-700 bg-gray-950">
         <div>
           <label className="block text-xs font-medium text-gray-300 mb-1">UniFi Gateway/Controller IP</label>
           <input

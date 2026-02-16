@@ -66,10 +66,25 @@ def get_logs(
             cur.execute(f"SELECT COUNT(*) as total FROM logs WHERE {where}", params)
             total = cur.fetchone()['total']
 
-            # Fetch page
+            # Fetch page, enriching with live device names from unifi_clients + unifi_devices
             cur.execute(
-                f"SELECT * FROM logs WHERE {where} ORDER BY {sort_col} {sort_dir} "
-                f"LIMIT %s OFFSET %s",
+                f"""WITH page AS (
+                        SELECT * FROM logs WHERE {where}
+                        ORDER BY {sort_col} {sort_dir} LIMIT %s OFFSET %s
+                    )
+                    SELECT page.*,
+                        COALESCE(page.src_device_name,
+                            c1.device_name, c1.hostname, c1.oui,
+                            d1.device_name, d1.model) AS src_device_name,
+                        COALESCE(page.dst_device_name,
+                            c2.device_name, c2.hostname, c2.oui,
+                            d2.device_name, d2.model) AS dst_device_name
+                    FROM page
+                    LEFT JOIN unifi_clients c1 ON c1.mac = page.mac_address
+                    LEFT JOIN unifi_clients c2 ON c2.ip = page.dst_ip
+                    LEFT JOIN unifi_devices d1 ON d1.mac = page.mac_address
+                    LEFT JOIN unifi_devices d2 ON d2.ip = page.dst_ip
+                    ORDER BY page.{sort_col} {sort_dir}""",
                 params + [per_page, offset]
             )
             rows = cur.fetchall()
@@ -90,6 +105,20 @@ def get_logs(
             if log.get('geo_lon'):
                 log['geo_lon'] = float(log['geo_lon'])
             logs.append(log)
+
+        # Annotate gateway IPs with "Gateway" + VLAN info, and WAN IPs with device name
+        gateway_vlans = get_config(enricher_db, 'gateway_ip_vlans') or {}
+        wan_ip_names = get_config(enricher_db, 'wan_ip_names') or {}
+        for log in logs:
+            for prefix in ('src', 'dst'):
+                name_key = f'{prefix}_device_name'
+                if not log.get(name_key):
+                    ip_str = str(log.get(f'{prefix}_ip', '')).split('/')[0]
+                    if ip_str in gateway_vlans:
+                        log[name_key] = 'Gateway'
+                        log[f'{prefix}_device_vlan'] = gateway_vlans[ip_str].get('vlan')
+                    elif ip_str in wan_ip_names:
+                        log[name_key] = wan_ip_names[ip_str]
 
         conn.commit()
         return {
@@ -128,12 +157,22 @@ def get_log(log_id: int):
                         CASE WHEN array_length(l.threat_categories, 1) > 0 THEN l.threat_categories END,
                         CASE WHEN array_length(t1.threat_categories, 1) > 0 THEN t1.threat_categories END,
                         CASE WHEN array_length(t2.threat_categories, 1) > 0 THEN t2.threat_categories END
-                    ) as threat_categories
+                    ) as threat_categories,
+                    COALESCE(l.src_device_name,
+                        c1.device_name, c1.hostname, c1.oui,
+                        d1.device_name, d1.model) as src_device_name,
+                    COALESCE(l.dst_device_name,
+                        c2.device_name, c2.hostname, c2.oui,
+                        d2.device_name, d2.model) as dst_device_name
                 FROM logs l
                 LEFT JOIN ip_threats t1 ON t1.ip = l.src_ip
                     AND NOT (l.src_ip = ANY(%s::inet[]))
                 LEFT JOIN ip_threats t2 ON t2.ip = l.dst_ip
                     AND NOT (l.dst_ip = ANY(%s::inet[]))
+                LEFT JOIN unifi_clients c1 ON c1.mac = l.mac_address
+                LEFT JOIN unifi_clients c2 ON c2.ip = l.dst_ip
+                LEFT JOIN unifi_devices d1 ON d1.mac = l.mac_address
+                LEFT JOIN unifi_devices d2 ON d2.ip = l.dst_ip
                 WHERE l.id = %s
             """, [wan_ips, wan_ips, log_id])
             row = cur.fetchone()
@@ -152,6 +191,19 @@ def get_log(log_id: int):
             log['geo_lat'] = float(log['geo_lat'])
         if log.get('geo_lon'):
             log['geo_lon'] = float(log['geo_lon'])
+
+        # Annotate gateway/WAN IPs with device names
+        gateway_vlans = get_config(enricher_db, 'gateway_ip_vlans') or {}
+        wan_ip_names = get_config(enricher_db, 'wan_ip_names') or {}
+        for prefix in ('src', 'dst'):
+            name_key = f'{prefix}_device_name'
+            if not log.get(name_key):
+                ip_str = str(log.get(f'{prefix}_ip', '')).split('/')[0]
+                if ip_str in gateway_vlans:
+                    log[name_key] = 'Gateway'
+                    log[f'{prefix}_device_vlan'] = gateway_vlans[ip_str].get('vlan')
+                elif ip_str in wan_ip_names:
+                    log[name_key] = wan_ip_names[ip_str]
 
         # Enrich with IANA service description for expanded detail view
         desc = get_service_description(log.get('dst_port'), log.get('protocol'))
@@ -206,20 +258,61 @@ def export_csv_endpoint(
         'abuse_is_tor',
     ]
 
+    # CSV header includes device name + VLAN columns resolved via live JOIN
+    csv_columns = export_columns + [
+        'src_device_name', 'dst_device_name',
+        'src_device_vlan', 'dst_device_vlan',
+    ]
+
     conn = get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT {', '.join(export_columns)} FROM logs "
-                f"WHERE {where} ORDER BY timestamp DESC LIMIT %s",
+                f"""WITH filtered AS (
+                        SELECT * FROM logs WHERE {where}
+                        ORDER BY timestamp DESC LIMIT %s
+                    )
+                    SELECT {', '.join('f.' + c for c in export_columns)},
+                        COALESCE(f.src_device_name,
+                            c1.device_name, c1.hostname, c1.oui,
+                            d1.device_name, d1.model) AS src_device_name,
+                        COALESCE(f.dst_device_name,
+                            c2.device_name, c2.hostname, c2.oui,
+                            d2.device_name, d2.model) AS dst_device_name
+                    FROM filtered f
+                    LEFT JOIN unifi_clients c1 ON c1.mac = f.mac_address
+                    LEFT JOIN unifi_clients c2 ON c2.ip = f.dst_ip
+                    LEFT JOIN unifi_devices d1 ON d1.mac = f.mac_address
+                    LEFT JOIN unifi_devices d2 ON d2.ip = f.dst_ip
+                    ORDER BY f.timestamp DESC""",
                 params + [limit]
             )
             rows = cur.fetchall()
 
+        # Annotate gateway/WAN IPs in CSV rows
+        gateway_vlans = get_config(enricher_db, 'gateway_ip_vlans') or {}
+        wan_ip_names = get_config(enricher_db, 'wan_ip_names') or {}
+        src_ip_idx = export_columns.index('src_ip')
+        dst_ip_idx = export_columns.index('dst_ip')
+        src_name_idx = len(export_columns)      # first appended column
+        dst_name_idx = len(export_columns) + 1
+
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(export_columns)
+        writer.writerow(csv_columns)
         for row in rows:
+            row = list(row) + [None, None]  # append vlan columns
+            for ip_idx, name_idx, vlan_idx in [
+                (src_ip_idx, src_name_idx, len(row) - 2),
+                (dst_ip_idx, dst_name_idx, len(row) - 1),
+            ]:
+                if not row[name_idx]:
+                    ip_str = str(row[ip_idx] or '').split('/')[0]
+                    if ip_str in gateway_vlans:
+                        row[name_idx] = 'Gateway'
+                        row[vlan_idx] = gateway_vlans[ip_str].get('vlan')
+                    elif ip_str in wan_ip_names:
+                        row[name_idx] = wan_ip_names[ip_str]
             writer.writerow([str(v) if v is not None else '' for v in row])
 
         output.seek(0)

@@ -3,11 +3,14 @@ UniFi Log Insight - UniFi Controller API Client
 
 Handles all interactions with the UniFi Controller's Classic and Integration APIs.
 Phase 1: Settings, wizard network config, firewall policy management.
+Phase 2: Client/device polling, IP-to-device-name enrichment.
 """
 
 import logging
 import os
+import threading
 import time
+from datetime import datetime, timezone
 
 import requests
 from requests.exceptions import ConnectionError, Timeout, SSLError
@@ -28,7 +31,11 @@ _WAN_PHYSICAL_MAP = {
 
 
 class UniFiAPI:
-    """UniFi Controller API client - Phase 1: settings, wizard, firewall."""
+    """UniFi Controller API client.
+
+    Phase 1: Settings, wizard network config, firewall policy management.
+    Phase 2: Client/device polling, IP-to-device-name enrichment.
+    """
 
     TIMEOUT = 10  # seconds per request
 
@@ -42,6 +49,16 @@ class UniFiAPI:
         self.verify_ssl = True
         self.enabled = False
         self.features = {}
+        # Phase 2: polling state
+        self._poll_thread = None
+        self._poll_stop = threading.Event()
+        self._lock = threading.Lock()
+        self._ip_to_name = {}
+        self._mac_to_name = {}
+        self._last_poll = None
+        self._last_poll_error = None
+        self._client_count = 0
+        self._device_count = 0
         try:
             self._resolve_config()
         except Exception as e:
@@ -104,11 +121,15 @@ class UniFiAPI:
             return ''
 
     def reload_config(self):
-        """Re-read settings, invalidate session + site UUID."""
+        """Re-read settings, invalidate session + site UUID, restart polling if needed."""
+        was_polling = self._poll_thread is not None and self._poll_thread.is_alive()
         self._session = None
         self._site_uuid = None
         self._resolve_config()
         logger.info("UniFi API config reloaded (enabled=%s, host=%s)", self.enabled, self.host or '(none)')
+        # Restart polling if it was running (or start it if newly enabled)
+        if was_polling or self.enabled:
+            self.start_polling()
 
     def get_config_source(self, key: str) -> str:
         """Return 'env', 'db', or 'default' for a config key."""
@@ -399,11 +420,12 @@ class UniFiAPI:
             'controller_name': self._db.get_config('unifi_controller_name', ''),
             'controller_version': self._db.get_config('unifi_controller_version', ''),
             'status': {
-                'connected': False,  # Phase 2: set from last poll result
-                'last_poll': None,
-                'last_error': None,
-                'client_count': 0,
-                'device_count': 0,
+                'connected': self._last_poll is not None and self._last_poll_error is None,
+                'last_poll': self._last_poll.isoformat() if self._last_poll else None,
+                'last_error': self._last_poll_error,
+                'client_count': self._client_count,
+                'device_count': self._device_count,
+                'polling_paused': False,  # Polling is always active when enabled
             },
         }
 
@@ -497,3 +519,254 @@ class UniFiAPI:
             'skipped': skipped,
             'errors': errors[:20],  # Cap error details
         }
+
+    # ── Phase 2: Client/Device Polling ───────────────────────────────────────
+
+    def poll(self) -> bool:
+        """Single poll cycle: fetch clients + devices, rebuild maps, persist.
+
+        Returns True on success, False on error.
+        """
+        if not self.enabled:
+            return False
+
+        try:
+            clients = []
+            devices = []
+
+            if self.features.get('client_names', True):
+                clients = self._poll_clients()
+            if self.features.get('device_discovery', True):
+                devices = self._poll_devices()
+
+            # Build in-memory maps atomically
+            ip_map = {}
+            mac_map = {}
+            for c in clients:
+                name = c.get('device_name') or c.get('hostname') or c.get('oui')
+                if name:
+                    if c.get('mac'):
+                        mac_map[c['mac'].lower()] = name
+                    if c.get('ip'):
+                        ip_map[c['ip']] = name
+            for d in devices:
+                name = d.get('device_name') or d.get('model')
+                if name:
+                    if d.get('mac'):
+                        mac_map[d['mac'].lower()] = name
+                    if d.get('ip'):
+                        ip_map[d['ip']] = name
+
+            # Add WAN IPs → gateway device name before atomic swap
+            if self.features.get('network_config', True):
+                try:
+                    net_config = self.get_network_config()
+                    # Find gateway device name from polled devices
+                    gateway_name = None
+                    for d in devices:
+                        if d.get('device_type') in ('ugw', 'udm', 'uxg'):
+                            gateway_name = d.get('device_name') or d.get('model')
+                            break
+                    if gateway_name:
+                        wan_ip_names = {}
+                        for wan in net_config.get('wan_interfaces', []):
+                            wan_ip = wan.get('wan_ip')
+                            if wan_ip:
+                                ip_map[wan_ip] = gateway_name
+                                wan_ip_names[wan_ip] = gateway_name
+                        if wan_ip_names:
+                            self._db.set_config('wan_ip_names', wan_ip_names)
+                    # Extract gateway IP→VLAN mapping
+                    gateway_vlans = {}
+                    for net in net_config.get('networks', []):
+                        subnet = net.get('ip_subnet', '')
+                        if '/' in subnet:
+                            gw_ip = subnet.split('/')[0]
+                            gateway_vlans[gw_ip] = {
+                                'vlan': net.get('vlan'),
+                                'name': net.get('name', ''),
+                            }
+                    if gateway_vlans:
+                        self._db.set_config('gateway_ip_vlans', gateway_vlans)
+                        self._db.set_config('gateway_ips', list(gateway_vlans.keys()))
+                except Exception as e:
+                    logger.warning("Failed to extract network config: %s", e)
+
+            # Atomic swap under lock
+            with self._lock:
+                self._ip_to_name = ip_map
+                self._mac_to_name = mac_map
+                self._client_count = len(clients)
+                self._device_count = len(devices)
+
+            # Persist to DB
+            if clients:
+                self._db.upsert_unifi_clients(clients)
+            if devices:
+                self._db.upsert_unifi_devices(devices)
+
+            self._last_poll = datetime.now(timezone.utc)
+            self._last_poll_error = None
+            logger.info("UniFi poll: %d clients, %d devices synced",
+                        len(clients), len(devices))
+            return True
+
+        except Exception as e:
+            self._last_poll_error = str(e)
+            logger.exception("UniFi poll failed")
+            return False
+
+    def _poll_clients(self) -> list[dict]:
+        """Fetch active + historical clients, merge into unified list."""
+        # Active clients (rich data: ip, network, essid, vlan)
+        active_by_mac = {}
+        try:
+            data = self._get('stat/sta')
+            for c in data.get('data', []):
+                mac = c.get('mac', '').lower()
+                if not mac:
+                    continue
+                active_by_mac[mac] = {
+                    'mac': mac,
+                    'ip': c.get('ip') or c.get('last_ip'),
+                    'device_name': c.get('name'),
+                    'hostname': c.get('hostname'),
+                    'oui': c.get('oui'),
+                    'network': c.get('network'),
+                    'essid': c.get('essid'),
+                    'vlan': c.get('vlan'),
+                    'is_fixed_ip': c.get('use_fixedip', False),
+                    'is_wired': c.get('is_wired'),
+                    'last_seen': _parse_epoch(c.get('last_seen')),
+                }
+        except Exception as e:
+            logger.warning("Failed to fetch stat/sta: %s", e)
+
+        # All known clients (historical — reduced fields)
+        all_by_mac = {}
+        try:
+            data = self._get('stat/alluser')
+            for c in data.get('data', []):
+                mac = c.get('mac', '').lower()
+                if not mac:
+                    continue
+                all_by_mac[mac] = {
+                    'mac': mac,
+                    'ip': c.get('last_ip'),  # no 'ip' in alluser
+                    'device_name': c.get('name'),
+                    'hostname': c.get('hostname'),
+                    'oui': c.get('oui'),
+                    'network': c.get('last_connection_network_name'),
+                    'essid': None,  # not available in alluser
+                    'vlan': None,
+                    'is_fixed_ip': c.get('use_fixedip', False),
+                    'is_wired': c.get('is_wired'),
+                    'last_seen': _parse_epoch(c.get('last_seen')),
+                }
+        except Exception as e:
+            logger.warning("Failed to fetch stat/alluser: %s", e)
+
+        # Merge: active clients take priority (richer data)
+        merged = {**all_by_mac, **active_by_mac}
+        return list(merged.values())
+
+    def _poll_devices(self) -> list[dict]:
+        """Fetch infrastructure devices (APs, switches, gateways)."""
+        try:
+            data = self._get('stat/device')
+            devices = []
+            for d in data.get('data', []):
+                mac = d.get('mac', '').lower()
+                if not mac:
+                    continue
+                devices.append({
+                    'mac': mac,
+                    'ip': d.get('ip'),
+                    'device_name': d.get('name'),
+                    'model': d.get('model'),
+                    'shortname': d.get('shortname'),
+                    'device_type': d.get('type'),
+                    'firmware': d.get('version'),
+                    'serial': d.get('serial'),
+                    'state': d.get('state'),
+                    'uptime': d.get('uptime'),
+                })
+            return devices
+        except Exception as e:
+            logger.warning("Failed to fetch stat/device: %s", e)
+            return []
+
+    def stop_polling(self):
+        """Stop the background polling thread if running."""
+        if self._poll_thread is not None and self._poll_thread.is_alive():
+            self._poll_stop.set()
+            self._poll_thread.join(timeout=5)
+            logger.info("UniFi polling stopped")
+
+    def start_polling(self):
+        """Start (or restart) the background polling daemon thread."""
+        # Stop existing thread if running
+        self.stop_polling()
+
+        if not self.enabled:
+            return
+
+        # Clear any stale paused flag (toggle was removed, polling always active)
+        self._db.set_config('unifi_polling_paused', False)
+
+        poll_interval = int(os.environ.get('UNIFI_POLL_INTERVAL', 0) or
+                            self._db.get_config('unifi_poll_interval', 300))
+
+        # Load cached maps from DB on cold start
+        try:
+            ip_map, mac_map = self._db.load_device_name_maps()
+            # Also load persisted WAN IP → gateway name mappings
+            wan_ip_names = self._db.get_config('wan_ip_names', {})
+            if wan_ip_names:
+                ip_map.update(wan_ip_names)
+            with self._lock:
+                self._ip_to_name = ip_map
+                self._mac_to_name = mac_map
+            if ip_map:
+                logger.info("Loaded %d cached device names from DB", len(ip_map))
+        except Exception as e:
+            logger.warning("Failed to load cached device names from DB: %s", e)
+
+        self._poll_stop = threading.Event()
+
+        def _poll_loop():
+            # Initial poll immediately
+            self.poll()
+            while not self._poll_stop.wait(poll_interval):
+                self.poll()
+
+        self._poll_thread = threading.Thread(target=_poll_loop, daemon=True,
+                                              name='unifi-poller')
+        self._poll_thread.start()
+        logger.info("UniFi polling started (interval=%ds)", poll_interval)
+
+    def resolve_name(self, ip: str | None = None, mac: str | None = None) -> str | None:
+        """Resolve device name by IP or MAC from in-memory cache.
+
+        Returns None if client_names feature is disabled or no match found.
+        """
+        if not self.features.get('client_names', True):
+            return None
+        with self._lock:
+            if mac:
+                name = self._mac_to_name.get(mac.lower())
+                if name:
+                    return name
+            if ip:
+                return self._ip_to_name.get(ip)
+        return None
+
+
+def _parse_epoch(epoch) -> datetime | None:
+    """Convert UniFi epoch timestamp to datetime, or None."""
+    if epoch is None:
+        return None
+    try:
+        return datetime.fromtimestamp(int(epoch), tz=timezone.utc)
+    except (ValueError, TypeError, OSError):
+        return None

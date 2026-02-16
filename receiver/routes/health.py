@@ -72,6 +72,6 @@ def health():
     except Exception as e:
         conn.rollback()
         logger.exception("Health check failed")
-        raise HTTPException(status_code=503, detail="Service unavailable")
+        raise HTTPException(status_code=503, detail="Service unavailable") from None
     finally:
         put_conn(conn)

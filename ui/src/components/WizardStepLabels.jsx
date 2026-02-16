@@ -170,7 +170,7 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
       )}
 
       {!loading && !error && segments.length > 0 && (
-        <div className="bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden">
+        <div className="border border-gray-800 rounded-lg overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-800">
@@ -180,8 +180,8 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
               </tr>
             </thead>
             <tbody>
-              {segments.map((seg, idx) => (
-                <tr key={seg.interface} className={`border-b border-gray-800/50 ${idx % 2 === 0 ? 'bg-gray-800/20' : ''}`}>
+              {segments.map((seg) => (
+                <tr key={seg.interface} className="border-b border-gray-800/50">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-mono text-gray-300">{seg.interface}</span>
@@ -200,6 +200,7 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
                           onClick={() => handleRemoveManualInterface(seg.interface)}
                           className="text-gray-500 hover:text-red-400 text-xs transition-colors"
                           title="Remove"
+                          aria-label={`Remove ${seg.interface}`}
                         >
                           ✕
                         </button>
@@ -304,7 +305,7 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
             className={`px-6 py-2.5 rounded-lg font-medium text-sm transition-all ${
               hasValidationErrors || disabled
                 ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
-                : nextLabel ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'
+                : 'bg-blue-500 hover:bg-blue-600 text-white'
             }`}
           >
             {nextLabel || 'Next'}

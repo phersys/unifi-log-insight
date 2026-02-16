@@ -1,6 +1,6 @@
 import React from 'react'
 import {
-  formatTime, FlagIcon, isPrivateIP, getInterfaceName, getInterfaceColor,
+  formatTime, FlagIcon, isPrivateIP, getInterfaceName,
   LOG_TYPE_STYLES, ACTION_STYLES,
   DIRECTION_ICONS, DIRECTION_COLORS, decodeThreatCategories,
 } from '../utils'
@@ -25,8 +25,27 @@ function ThreatBadge({ score, categories }) {
   )
 }
 
-function IPCell({ ip, port }) {
+function IPCell({ ip, port, deviceName, vlan }) {
   if (!ip) return <span className="text-gray-700">—</span>
+
+  if (deviceName) {
+    return (
+      <div className="min-w-0 leading-tight">
+        <div className="flex items-center gap-1">
+          <span className="text-gray-200 text-[12px] truncate" title={deviceName}>{deviceName}</span>
+          {vlan != null && (
+            <span className="text-[10px] px-1 py-0 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">
+              VLAN {vlan}
+            </span>
+          )}
+        </div>
+        <span className="inline-flex items-baseline gap-0.5 min-w-0">
+          <span className="text-gray-500 text-[11px] truncate">{ip}</span>
+          {port && <span className="text-gray-600 text-[11px]">:{port}</span>}
+        </span>
+      </div>
+    )
+  }
 
   return (
     <span className="inline-flex items-baseline gap-0.5 min-w-0">
@@ -39,19 +58,15 @@ function IPCell({ ip, port }) {
 function NetworkPath({ ifaceIn, ifaceOut }) {
   if (!ifaceIn && !ifaceOut) return <span className="text-gray-700">—</span>
 
-  // Colors based on raw interface name, not label
-  const colorIn = getInterfaceColor(ifaceIn)
-  const colorOut = getInterfaceColor(ifaceOut)
-
   if (!ifaceOut) {
-    return <span className={colorIn}>{getInterfaceName(ifaceIn)}</span>
+    return <span className="text-gray-200">{getInterfaceName(ifaceIn)}</span>
   }
 
   return (
     <span className="inline-flex items-center gap-1">
-      <span className={ifaceIn ? colorIn : 'text-gray-400 italic'}>{ifaceIn ? getInterfaceName(ifaceIn) : 'External'}</span>
+      <span className={ifaceIn ? 'text-gray-200' : 'text-gray-400 italic'}>{ifaceIn ? getInterfaceName(ifaceIn) : 'External'}</span>
       <span className="text-gray-500">→</span>
-      <span className={colorOut}>{getInterfaceName(ifaceOut)}</span>
+      <span className="text-gray-200">{getInterfaceName(ifaceOut)}</span>
     </span>
   )
 }
@@ -93,7 +108,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* Type */}
         <td className="px-2 py-1.5">
-          <span className={`inline-block px-1.5 py-0.5 rounded text-[12px] font-medium border ${typeStyle}`}>
+          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase border ${typeStyle}`}>
             {log.log_type}
           </span>
         </td>
@@ -101,7 +116,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
         {/* Action */}
         <td className="px-2 py-1.5">
           {(log.rule_action || log.dhcp_event || log.wifi_event) ? (
-            <span className={`inline-block px-1.5 py-0.5 rounded text-[12px] font-medium border ${actionStyle}`}>
+            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase border ${actionStyle}`}>
               {log.rule_action || log.dhcp_event || log.wifi_event}
             </span>
           ) : (
@@ -111,7 +126,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* Source */}
         <td className="px-2 py-1.5 text-[13px] max-w-[180px] truncate">
-          <IPCell ip={log.src_ip} port={log.src_port} />
+          <IPCell ip={log.src_ip} port={log.src_port} deviceName={log.src_device_name} vlan={log.src_device_vlan} />
         </td>
 
         {/* Direction */}
@@ -121,7 +136,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* Destination */}
         <td className="px-2 py-1.5 text-[13px] max-w-[180px] truncate">
-          <IPCell ip={log.dst_ip} port={log.dst_port} />
+          <IPCell ip={log.dst_ip} port={log.dst_port} deviceName={log.dst_device_name} vlan={log.dst_device_vlan} />
         </td>
 
         {/* Country */}

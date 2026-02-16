@@ -102,7 +102,7 @@ export default function FilterBar({ filters, onChange }) {
             <button
               key={type}
               onClick={() => toggleType(type)}
-              className={`px-2.5 py-1 rounded text-xs font-medium border transition-all ${
+              className={`px-2.5 py-1 rounded text-xs font-medium uppercase border transition-all ${
                 activeTypes.includes(type)
                   ? LOG_TYPE_STYLES[type]
                   : 'border-transparent text-gray-500 hover:text-gray-400'
@@ -120,7 +120,7 @@ export default function FilterBar({ filters, onChange }) {
             <button
               key={action}
               onClick={() => toggleAction(action)}
-              className={`px-2 py-1 rounded text-xs font-medium border transition-all ${
+              className={`px-2 py-1 rounded text-xs font-medium uppercase border transition-all ${
                 activeActions.includes(action)
                   ? ACTION_STYLES[action]
                   : 'border-transparent text-gray-500 hover:text-gray-400'
@@ -138,7 +138,7 @@ export default function FilterBar({ filters, onChange }) {
             <button
               key={dir}
               onClick={() => toggleDirection(dir)}
-              className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+              className={`px-2 py-1 rounded text-xs font-medium uppercase transition-all ${
                 activeDirections.includes(dir)
                   ? 'bg-gray-700 text-white'
                   : 'text-gray-500 hover:text-gray-400'

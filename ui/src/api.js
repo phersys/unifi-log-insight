@@ -168,6 +168,14 @@ export async function bulkUpdateFirewallLogging(policies) {
   return resp.json()
 }
 
+// ── UniFi Device Names (Phase 2) ────────────────────────────────────────────
+
+export async function fetchUniFiStatus() {
+  const resp = await fetch(`${BASE}/unifi/status`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
 // ── Version Check ────────────────────────────────────────────────────────────
 
 export async function fetchLatestRelease() {

@@ -147,7 +147,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
                 className={`flex items-center justify-between px-4 py-3 rounded-lg border cursor-pointer transition-all ${
                   selected.includes(c.interface)
                     ? 'bg-blue-500/10 border-blue-500/40'
-                    : 'bg-gray-900/50 border-gray-800 hover:border-gray-700'
+                    : 'border-gray-800 hover:border-gray-700'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -174,7 +174,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
       )}
 
       {!loading && !error && candidates.length === 0 && (
-        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex items-center justify-between">
+        <div className="border border-gray-700 rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="inline-block w-3 h-3 rounded-full bg-blue-400 animate-pulse" />
             <p className="text-sm text-gray-300">
@@ -212,7 +212,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
                 className={`flex items-center justify-between px-4 py-3 rounded-lg border cursor-pointer transition-all ${
                   selected.includes(iface.name)
                     ? 'bg-blue-500/10 border-blue-500/40'
-                    : 'bg-gray-900/50 border-gray-800 hover:border-gray-700'
+                    : 'border-gray-800 hover:border-gray-700'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -306,7 +306,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
           </p>
           <div className="space-y-2">
             {selected.map((iface, idx) => (
-              <div key={iface} className="flex items-center gap-3 px-4 py-2.5 bg-gray-900/50 border border-gray-800 rounded-lg">
+              <div key={iface} className="flex items-center gap-3 px-4 py-2.5 border border-gray-800 rounded-lg">
                 <span className="text-sm font-mono text-gray-300 w-24 shrink-0">{iface}</span>
                 <input
                   type="text"

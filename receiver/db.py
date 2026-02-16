@@ -70,6 +70,7 @@ INSERT_COLUMNS = [
     'abuse_usage_type', 'abuse_hostnames',
     'abuse_total_reports', 'abuse_last_reported',
     'abuse_is_whitelisted', 'abuse_is_tor',
+    'src_device_name', 'dst_device_name',
     'raw_log',
 ]
 
@@ -143,6 +144,41 @@ class Database:
             """INSERT INTO system_config (key, value, updated_at)
                VALUES ('enrichment_wan_fix_pending', 'true', NOW())
                ON CONFLICT (key) DO NOTHING""",
+            # Phase 2: Device name columns on logs
+            "ALTER TABLE logs ADD COLUMN IF NOT EXISTS src_device_name TEXT",
+            "ALTER TABLE logs ADD COLUMN IF NOT EXISTS dst_device_name TEXT",
+            # Phase 2: UniFi client cache
+            """CREATE TABLE IF NOT EXISTS unifi_clients (
+                mac             MACADDR PRIMARY KEY,
+                ip              INET,
+                device_name     TEXT,
+                hostname        TEXT,
+                oui             TEXT,
+                network         TEXT,
+                essid           TEXT,
+                vlan            INTEGER,
+                is_fixed_ip     BOOLEAN DEFAULT FALSE,
+                is_wired        BOOLEAN,
+                last_seen       TIMESTAMPTZ,
+                updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_unifi_clients_ip ON unifi_clients (ip)",
+            "CREATE INDEX IF NOT EXISTS idx_unifi_clients_name ON unifi_clients (device_name) WHERE device_name IS NOT NULL",
+            # Phase 2: UniFi infrastructure device cache
+            """CREATE TABLE IF NOT EXISTS unifi_devices (
+                mac             MACADDR PRIMARY KEY,
+                ip              INET,
+                device_name     TEXT,
+                model           TEXT,
+                shortname       TEXT,
+                device_type     TEXT,
+                firmware        TEXT,
+                serial          TEXT,
+                state           INTEGER,
+                uptime          BIGINT,
+                updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_unifi_devices_ip ON unifi_devices (ip)",
         ]
         try:
             with self.get_conn() as conn:
@@ -448,6 +484,116 @@ class Database:
                     SET value = EXCLUDED.value, updated_at = NOW()
                 """, [key, Json(value)])  # Use Json() for proper JSONB handling
 
+
+    # ── UniFi client / device cache ──────────────────────────────────────────
+
+    def upsert_unifi_clients(self, clients: list[dict]) -> int:
+        """Bulk upsert UniFi clients. Returns count upserted."""
+        if not clients:
+            return 0
+        sql = """
+            INSERT INTO unifi_clients (mac, ip, device_name, hostname, oui,
+                network, essid, vlan, is_fixed_ip, is_wired, last_seen, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (mac) DO UPDATE SET
+                ip = EXCLUDED.ip,
+                device_name = COALESCE(EXCLUDED.device_name, unifi_clients.device_name),
+                hostname = COALESCE(EXCLUDED.hostname, unifi_clients.hostname),
+                oui = COALESCE(EXCLUDED.oui, unifi_clients.oui),
+                network = COALESCE(EXCLUDED.network, unifi_clients.network),
+                essid = COALESCE(EXCLUDED.essid, unifi_clients.essid),
+                vlan = COALESCE(EXCLUDED.vlan, unifi_clients.vlan),
+                is_fixed_ip = COALESCE(EXCLUDED.is_fixed_ip, unifi_clients.is_fixed_ip),
+                is_wired = COALESCE(EXCLUDED.is_wired, unifi_clients.is_wired),
+                last_seen = GREATEST(EXCLUDED.last_seen, unifi_clients.last_seen),
+                updated_at = NOW()
+        """
+        rows = [
+            (c['mac'], c.get('ip'), c.get('device_name'), c.get('hostname'),
+             c.get('oui'), c.get('network'), c.get('essid'), c.get('vlan'),
+             c.get('is_fixed_ip'), c.get('is_wired'), c.get('last_seen'))
+            for c in clients
+        ]
+        try:
+            with self.get_conn() as conn:
+                with conn.cursor() as cur:
+                    extras.execute_batch(cur, sql, rows, page_size=200)
+            return len(rows)
+        except Exception:
+            logger.exception("Failed to upsert UniFi clients")
+            return 0
+
+    def upsert_unifi_devices(self, devices: list[dict]) -> int:
+        """Bulk upsert UniFi infrastructure devices. Returns count upserted."""
+        if not devices:
+            return 0
+        sql = """
+            INSERT INTO unifi_devices (mac, ip, device_name, model, shortname,
+                device_type, firmware, serial, state, uptime, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (mac) DO UPDATE SET
+                ip = EXCLUDED.ip,
+                device_name = COALESCE(EXCLUDED.device_name, unifi_devices.device_name),
+                model = COALESCE(EXCLUDED.model, unifi_devices.model),
+                shortname = COALESCE(EXCLUDED.shortname, unifi_devices.shortname),
+                device_type = COALESCE(EXCLUDED.device_type, unifi_devices.device_type),
+                firmware = COALESCE(EXCLUDED.firmware, unifi_devices.firmware),
+                serial = COALESCE(EXCLUDED.serial, unifi_devices.serial),
+                state = EXCLUDED.state,
+                uptime = EXCLUDED.uptime,
+                updated_at = NOW()
+        """
+        rows = [
+            (d['mac'], d.get('ip'), d.get('device_name'), d.get('model'),
+             d.get('shortname'), d.get('device_type'), d.get('firmware'),
+             d.get('serial'), d.get('state'), d.get('uptime'))
+            for d in devices
+        ]
+        try:
+            with self.get_conn() as conn:
+                with conn.cursor() as cur:
+                    extras.execute_batch(cur, sql, rows, page_size=200)
+            return len(rows)
+        except Exception:
+            logger.exception("Failed to upsert UniFi devices")
+            return 0
+
+    def load_device_name_maps(self) -> tuple[dict, dict]:
+        """Load IP-to-name and MAC-to-name maps from unifi_clients + unifi_devices.
+
+        Name priority: device_name > hostname > oui.
+        Returns (ip_to_name, mac_to_name) dicts.
+        """
+        ip_map = {}
+        mac_map = {}
+        try:
+            with self.get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT mac, host(ip) as ip,
+                               COALESCE(device_name, hostname, oui) as name
+                        FROM unifi_clients
+                        WHERE COALESCE(device_name, hostname, oui) IS NOT NULL
+                    """)
+                    for mac, ip, name in cur.fetchall():
+                        if mac:
+                            mac_map[str(mac)] = name
+                        if ip:
+                            ip_map[ip] = name
+                    cur.execute("""
+                        SELECT mac, host(ip) as ip,
+                               COALESCE(device_name, model) as name
+                        FROM unifi_devices
+                        WHERE COALESCE(device_name, model) IS NOT NULL
+                    """)
+                    for mac, ip, name in cur.fetchall():
+                        if mac:
+                            mac_map[str(mac)] = name
+                        if ip:
+                            ip_map[ip] = name
+        except Exception:
+            logger.exception("Failed to load device name maps")
+        return ip_map, mac_map
 
     # ── WAN IP detection ──────────────────────────────────────────────────────
 
