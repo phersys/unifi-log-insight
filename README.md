@@ -131,7 +131,7 @@ volumes:
 **Create your API Key**: Once your account is created and you are logged in, navigate to https://www.abuseipdb.com/account/api and click on 'Create Key'
 - Set `ABUSEIPDB_API_KEY` to the key you just copied from the site, into .env.
 
-**`.env`**
+### .env file
 Your final .env should look like this:
 
 ```env
