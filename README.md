@@ -185,7 +185,7 @@ On first launch, a **Setup Wizard** will guide you through configuration. You ca
 
 Connect to your UniFi Controller to auto-detect everything:
 
-1. **Connect** — Enter your Unifi controller IP and Unifi API key. The wizard tests connectivity and saves credentials.
+1. **Connect** — Enter your Unifi controller IP and Unifi API key. The wizard tests connectivity and saves credentials. If your controller uses a self-signed or custom SSL certificate, enable **Skip SSL verification** under Advanced before testing.
 2. **WAN Detection** — WAN interfaces are auto-detected from the controller's network config.
 3. **Network Labels** — VLANs and subnets are pre-populated from the controller. Just review and label.
 4. **Firewall Rules** — View your zone matrix and enable syslog on firewall rules directly from the wizard.
