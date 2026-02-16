@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS logs (
     abuse_last_reported TIMESTAMPTZ,
     abuse_is_whitelisted BOOLEAN,
     abuse_is_tor BOOLEAN,
+    src_device_name TEXT,
+    dst_device_name TEXT,
     raw_log     TEXT NOT NULL,
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
@@ -85,6 +87,40 @@ CREATE TABLE IF NOT EXISTS ip_threats (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ip_threats_looked_up ON ip_threats (looked_up_at);
+
+-- UniFi client cache (Phase 2: IP-to-device-name enrichment)
+CREATE TABLE IF NOT EXISTS unifi_clients (
+    mac             MACADDR PRIMARY KEY,
+    ip              INET,
+    device_name     TEXT,
+    hostname        TEXT,
+    oui             TEXT,
+    network         TEXT,
+    essid           TEXT,
+    vlan            INTEGER,
+    is_fixed_ip     BOOLEAN DEFAULT FALSE,
+    is_wired        BOOLEAN,
+    last_seen       TIMESTAMPTZ,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_unifi_clients_ip ON unifi_clients (ip);
+CREATE INDEX IF NOT EXISTS idx_unifi_clients_name ON unifi_clients (device_name) WHERE device_name IS NOT NULL;
+
+-- UniFi infrastructure device cache (Phase 2)
+CREATE TABLE IF NOT EXISTS unifi_devices (
+    mac             MACADDR PRIMARY KEY,
+    ip              INET,
+    device_name     TEXT,
+    model           TEXT,
+    shortname       TEXT,
+    device_type     TEXT,
+    firmware        TEXT,
+    serial          TEXT,
+    state           INTEGER,
+    uptime          BIGINT,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_unifi_devices_ip ON unifi_devices (ip);
 
 -- Dynamic configuration store (setup wizard, interface labels, etc.)
 CREATE TABLE IF NOT EXISTS system_config (

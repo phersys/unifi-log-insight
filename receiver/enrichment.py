@@ -432,10 +432,11 @@ class RDNSEnricher:
 class Enricher:
     """Orchestrates all enrichment for a parsed log entry."""
 
-    def __init__(self, db=None):
+    def __init__(self, db=None, unifi=None):
         self.geoip = GeoIPEnricher()
         self.abuseipdb = AbuseIPDBEnricher(db=db)
         self.rdns = RDNSEnricher()
+        self.unifi = unifi
         self._db = db
         self._known_wan_ip = None
         self._excluded_ips = set()  # WAN IPs, gateway IPs — not enrichable
@@ -483,6 +484,15 @@ class Enricher:
         dst_ip = parsed.get('dst_ip')
         src_remote = self._is_remote_ip(src_ip)
         dst_remote = self._is_remote_ip(dst_ip)
+
+        # Device name resolution (private IPs) — runs BEFORE public IP guard
+        # so inter-VLAN and local-only traffic still gets device names
+        if self.unifi and self.unifi.enabled:
+            if src_ip and not src_remote:
+                parsed['src_device_name'] = self.unifi.resolve_name(
+                    ip=src_ip, mac=parsed.get('mac_address'))
+            if dst_ip and not dst_remote:
+                parsed['dst_device_name'] = self.unifi.resolve_name(ip=dst_ip)
 
         if src_remote and not dst_remote:
             ip_to_enrich = src_ip

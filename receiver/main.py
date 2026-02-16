@@ -25,6 +25,7 @@ from db import Database, get_config, set_config
 from enrichment import Enricher
 from backfill import BackfillTask
 from blacklist import BlacklistFetcher
+from unifi_api import UniFiAPI
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
@@ -293,8 +294,11 @@ def main():
         # Future: handle config schema migrations
         pass
 
-    # Initialize enrichment
-    enricher = Enricher(db=db)
+    # Initialize UniFi API client (self-disables when not configured)
+    unifi_api = UniFiAPI(db=db)
+
+    # Initialize enrichment (with UniFi device name resolution)
+    enricher = Enricher(db=db, unifi=unifi_api)
 
     # Start receiver
     receiver = SyslogReceiver(db, enricher)
@@ -303,6 +307,7 @@ def main():
     def shutdown(signum, frame):
         logger.info("Received signal %d, shutting down...", signum)
         receiver.stop()
+        unifi_api.stop_polling()
         enricher.close()
         db.close()
         sys.exit(0)
@@ -317,6 +322,7 @@ def main():
         """Reload config from database when signaled by API process."""
         logger.info("Received SIGUSR2, reloading config from database...")
         parsers.reload_config_from_db(db)
+        unifi_api.reload_config()
 
         # Write timestamp to confirm reload completed
         try:
@@ -341,11 +347,15 @@ def main():
     backfill = BackfillTask(db, enricher)
     backfill.start()
 
+    # Start UniFi client/device polling (only runs if enabled)
+    unifi_api.start_polling()
+
     # Start receiving (blocks)
     try:
         receiver.start()
     except KeyboardInterrupt:
         receiver.stop()
+        unifi_api.stop_polling()
         enricher.close()
         db.close()
 

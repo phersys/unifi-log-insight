@@ -1,18 +1,9 @@
 import { useState, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fetchStats } from '../api'
-import { formatNumber, FlagIcon, decodeThreatCategories } from '../utils'
+import { formatNumber, FlagIcon, decodeThreatCategories, LOG_TYPE_STYLES } from '../utils'
 
 const TIME_RANGES = ['1h', '6h', '24h', '7d', '30d', '60d']
-
-const LOG_TYPE_COLORS = {
-  firewall: 'text-blue-400',
-  dns: 'text-violet-400',
-  dhcp: 'text-cyan-400',
-  wifi: 'text-amber-400',
-  ids: 'text-red-400',
-  system: 'text-gray-300',
-}
 
 export function DashboardSkeleton() {
   return (
@@ -26,23 +17,23 @@ export function DashboardSkeleton() {
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-2">
+          <div key={i} className="border border-gray-800 rounded-lg p-4 space-y-2">
             <div className="h-2.5 w-16 bg-gray-800 rounded" />
             <div className="h-6 w-12 bg-gray-800 rounded" />
           </div>
         ))}
       </div>
       {/* Direction breakdown */}
-      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-16" />
+      <div className="border border-gray-800 rounded-lg p-4 h-16" />
       {/* Charts */}
-      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-40" />
-      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-52" />
+      <div className="border border-gray-800 rounded-lg p-4 h-40" />
+      <div className="border border-gray-800 rounded-lg p-4 h-52" />
       {/* Section header */}
       <div className="h-3 w-24 bg-gray-800 rounded mt-2" />
       {/* Panel grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {[...Array(6)].map((_, i) => (
-          <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-48" />
+          <div key={i} className="border border-gray-800 rounded-lg p-4 h-48" />
         ))}
       </div>
       {/* Section header */}
@@ -50,7 +41,7 @@ export function DashboardSkeleton() {
       {/* Allowed panel grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-48" />
+          <div key={i} className="border border-gray-800 rounded-lg p-4 h-48" />
         ))}
       </div>
     </div>
@@ -59,7 +50,7 @@ export function DashboardSkeleton() {
 
 function StatCard({ label, value, color = 'text-white', sub }) {
   return (
-    <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+    <div className="border border-gray-800 rounded-lg p-4">
       <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">{label}</div>
       <div className={`text-2xl font-semibold ${color}`}>{formatNumber(value)}</div>
       {sub && <div className="text-[10px] text-gray-400 mt-1">{sub}</div>}
@@ -111,7 +102,7 @@ function ActionTooltip({ active, payload, timeRange }) {
   return (
     <div className="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs shadow-lg">
       <div className="text-gray-400 mb-1.5">{label}</div>
-      {payload.map((p, i) => {
+      {[...payload].reverse().map((p, i) => {
         const raw = row[keys[p.name]] || 0
         const pct = total > 0 ? Math.round((raw / total) * 100) : 0
         return (
@@ -129,9 +120,24 @@ function ActionTooltip({ active, payload, timeRange }) {
   )
 }
 
-function LogsOverTimeChart({ data, timeRange }) {
+const RANGE_MS = { '1h': 3600e3, '6h': 21600e3, '24h': 86400e3, '7d': 604800e3, '30d': 2592e6, '60d': 5184e6 }
+
+function isSparseData(data, timeRange) {
+  if (!data || data.length < 2) return true
+  const first = new Date(data[0].period).getTime()
+  const last = new Date(data[data.length - 1].period).getTime()
+  const span = last - first
+  const rangeMs = RANGE_MS[timeRange] || 3600e3
+  return span < rangeMs * 0.15
+}
+
+function LogsOverTimeChart({ data, timeRange, loading }) {
   if (!data || data.length === 0) {
-    return <div className="text-gray-400 text-xs text-center py-8">No data yet</div>
+    return <div className="text-gray-400 text-xs text-center py-8">{loading ? 'Loading...' : 'No data yet'}</div>
+  }
+  if (isSparseData(data, timeRange)) {
+    if (loading) return <div className="text-gray-400 text-xs text-center py-8">Loading...</div>
+    return <div className="text-gray-500 text-xs text-center py-8">Not enough data to display a chart. Try selecting a shorter time range.</div>
   }
   return (
     <ResponsiveContainer width="100%" height={140}>
@@ -155,9 +161,13 @@ function LogsOverTimeChart({ data, timeRange }) {
   )
 }
 
-function TrafficByActionChart({ data, timeRange }) {
+function TrafficByActionChart({ data, timeRange, loading }) {
   if (!data || data.length === 0) {
-    return <div className="text-gray-400 text-xs text-center py-8">No data yet</div>
+    return <div className="text-gray-400 text-xs text-center py-8">{loading ? 'Loading...' : 'No data yet'}</div>
+  }
+  if (isSparseData(data, timeRange)) {
+    if (loading) return <div className="text-gray-400 text-xs text-center py-8">Loading...</div>
+    return <div className="text-gray-500 text-xs text-center py-8">Not enough data to display a chart. Try selecting a shorter time range.</div>
   }
   return (
     <ResponsiveContainer width="100%" height={220}>
@@ -205,7 +215,7 @@ function formatTimeAgo(isoStr) {
 
 function TopList({ title, items, renderItem }) {
   return (
-    <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+    <div className="border border-gray-800 rounded-lg p-4">
       <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-3">{title}</div>
       {items.length === 0 ? (
         <div className="text-gray-400 text-xs py-4 text-center">No data</div>
@@ -300,18 +310,21 @@ export default function Dashboard() {
         <StatCard
           label="Log Types"
           value={Object.keys(stats.by_type).length}
-          sub={Object.entries(stats.by_type).map(([t, c], i, arr) => (
-            <span key={t}>
-              <span className={LOG_TYPE_COLORS[t] || 'text-gray-400'}>{t}</span>
-              {': '}{formatNumber(c)}{i < arr.length - 1 ? ' · ' : ''}
+          sub={
+            <span className="inline-flex flex-wrap gap-1">
+              {Object.entries(stats.by_type).map(([t, c]) => (
+                <span key={t} className={`inline-block px-1 py-0 rounded text-[8px] font-semibold uppercase border ${LOG_TYPE_STYLES[t] || LOG_TYPE_STYLES.system}`}>
+                  {t} {formatNumber(c)}
+                </span>
+              ))}
             </span>
-          ))}
+          }
         />
       </div>
 
       {/* Direction breakdown */}
       {Object.keys(stats.by_direction).length > 0 && (
-        <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+        <div className="border border-gray-800 rounded-lg p-4">
           <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-3">Traffic Direction</div>
           <div className="flex items-center gap-4">
             {Object.entries(stats.by_direction).map(([dir, count]) => {
@@ -326,7 +339,7 @@ export default function Dashboard() {
                   <div className={`text-lg font-semibold ${colors[dir] || 'text-gray-300'}`}>
                     {formatNumber(count)}
                   </div>
-                  <div className="text-[10px] text-gray-400">{dir}</div>
+                  <div className="text-[10px] text-gray-400 uppercase">{dir === 'inter_vlan' ? 'VLAN' : dir}</div>
                 </div>
               )
             })}
@@ -335,13 +348,13 @@ export default function Dashboard() {
       )}
 
       {/* Logs over time chart */}
-      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+      <div className="border border-gray-800 rounded-lg p-4">
         <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-3">Traffic Over Time</div>
-        <LogsOverTimeChart data={stats.logs_over_time || stats.logs_per_hour} timeRange={timeRange} />
+        <LogsOverTimeChart data={stats.logs_over_time || stats.logs_per_hour} timeRange={timeRange} loading={loading} />
       </div>
 
       {/* Traffic by action chart */}
-      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+      <div className="border border-gray-800 rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="text-[10px] text-gray-400 uppercase tracking-wider">Traffic by Action</div>
           <div className="flex items-center gap-4">
@@ -356,7 +369,7 @@ export default function Dashboard() {
             </span>
           </div>
         </div>
-        <TrafficByActionChart data={stats.traffic_by_action} timeRange={timeRange} />
+        <TrafficByActionChart data={stats.traffic_by_action} timeRange={timeRange} loading={loading} />
       </div>
 
       {/* Top lists grid */}
@@ -426,8 +439,20 @@ export default function Dashboard() {
           renderItem={(item, i) => (
             <div key={i} className="space-y-1">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-300">{item.ip}</span>
-                <span className="text-gray-400">{formatNumber(item.count)}</span>
+                <div className="min-w-0">
+                  {item.device_name && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-200 text-[12px] truncate" title={item.device_name}>{item.device_name}</span>
+                      {item.vlan != null && (
+                        <span className="text-[10px] px-1 py-0 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">
+                          VLAN {item.vlan}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <span className={item.device_name ? 'text-gray-500 text-[11px]' : 'text-gray-300'}>{item.ip}</span>
+                </div>
+                <span className="text-gray-400 shrink-0 ml-2">{formatNumber(item.count)}</span>
               </div>
               <MiniBar data={item.count} maxVal={maxBlockedInternal} color="bg-red-500/60" />
             </div>
@@ -440,8 +465,20 @@ export default function Dashboard() {
           renderItem={(item, i) => (
             <div key={i} className="space-y-1">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-300">{item.ip}</span>
-                <span className="text-gray-400">{formatNumber(item.count)}</span>
+                <div className="min-w-0">
+                  {item.device_name && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-200 text-[12px] truncate" title={item.device_name}>{item.device_name}</span>
+                      {item.vlan != null && (
+                        <span className="text-[10px] px-1 py-0 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">
+                          VLAN {item.vlan}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <span className={item.device_name ? 'text-gray-500 text-[11px]' : 'text-gray-300'}>{item.ip}</span>
+                </div>
+                <span className="text-gray-400 shrink-0 ml-2">{formatNumber(item.count)}</span>
               </div>
               <MiniBar data={item.count} maxVal={maxActiveInternal} color="bg-emerald-500/60" />
             </div>
@@ -466,7 +503,7 @@ export default function Dashboard() {
           )}
         />
 
-        <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+        <div className="border border-gray-800 rounded-lg p-4">
           <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-3">Top Countries</div>
           {(() => {
             const blocked = stats.top_blocked_countries || []

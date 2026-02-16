@@ -1,0 +1,223 @@
+import { useState } from 'react'
+import { testUniFiConnection } from '../api'
+
+function normalizeHost(raw) {
+  const h = raw.trim()
+  if (!h) return h
+  if (/^https?:\/\//i.test(h)) return h
+  return `https://${h}`
+}
+
+export default function UniFiConnectionForm({ onSuccess, onSkip, envApiKey, envHost, savedHost, savedApiKey }) {
+  const [host, setHost] = useState(envHost || savedHost || '')
+  const [apiKey, setApiKey] = useState('')
+  const [useSaved, setUseSaved] = useState(!!savedApiKey)
+  const [site, setSite] = useState('default')
+  const [verifySsl, setVerifySsl] = useState(true)
+  const [showAdvanced, setShowAdvanced] = useState(true)
+  const [testing, setTesting] = useState(false)
+  const [error, setError] = useState(null)
+  const [result, setResult] = useState(null)
+
+  const hasKey = envApiKey || useSaved || apiKey.trim()
+
+  const handleTest = async () => {
+    setTesting(true)
+    setError(null)
+    setResult(null)
+    try {
+      const normalizedHost = normalizeHost(host)
+      const params = {
+        host: normalizedHost,
+        site,
+        verify_ssl: verifySsl,
+      }
+      if (envApiKey) {
+        params.use_env_key = true
+      } else if (useSaved) {
+        params.use_saved_key = true
+      } else {
+        params.api_key = apiKey.trim()
+      }
+      const res = await testUniFiConnection(params)
+      if (res.success) {
+        setResult(res)
+        setTimeout(() => onSuccess({
+          host: normalizedHost,
+          site,
+          verify_ssl: verifySsl,
+          use_env_key: !!envApiKey,
+          controller_name: res.controller_name,
+          version: res.version,
+          site_name: res.site_name,
+        }), 1500)
+      } else {
+        setError(res.error || 'Connection failed')
+      }
+    } catch (err) {
+      setError(err.message || 'Connection failed')
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-gray-200 mb-1">Connect to UniFi Controller</h2>
+      <p className="text-sm text-gray-400 mb-4">Optional — enables auto-detection and firewall management</p>
+
+      <div className="text-xs text-gray-400 mb-5 space-y-1">
+        <p>Connecting your UniFi controller enables:</p>
+        <ul className="list-disc ml-4 space-y-0.5">
+          <li>Auto-detection of WAN and network configuration</li>
+          <li>Firewall rule syslog management</li>
+          <li>Device name resolution</li>
+        </ul>
+      </div>
+
+      {envApiKey && (
+        <div className="mb-4 px-3 py-2 rounded bg-blue-500/10 border border-blue-500/30 text-xs text-blue-400">
+          API key detected from environment variable
+        </div>
+      )}
+
+      <div className="space-y-3 p-4 rounded-lg border border-gray-700 bg-gray-950">
+        <div>
+          <label className="block text-xs font-medium text-gray-300 mb-1">UniFi Gateway/Controller IP</label>
+          <input
+            type="text"
+            value={host}
+            onChange={e => { setHost(e.target.value); setResult(null); setError(null) }}
+            placeholder="192.168.1.1"
+            disabled={!!envHost}
+            className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+          />
+          {envHost && (
+            <p className="text-[10px] text-gray-500 mt-1">Set by UNIFI_HOST environment variable</p>
+          )}
+        </div>
+
+        {!envApiKey && (
+          <div>
+            <label className="block text-xs font-medium text-gray-300 mb-1">API Key</label>
+            {useSaved ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-400">
+                  &#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022; (saved)
+                </div>
+                <button
+                  onClick={() => { setUseSaved(false); setResult(null); setError(null) }}
+                  className="px-3 py-2 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors whitespace-nowrap"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={e => { setApiKey(e.target.value); setResult(null); setError(null) }}
+                  placeholder="Enter your UniFi API key"
+                  className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                />
+                {savedApiKey && !apiKey.trim() && (
+                  <button
+                    onClick={() => { setUseSaved(true); setResult(null); setError(null) }}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 mt-1"
+                  >
+                    Use saved key
+                  </button>
+                )}
+              </>
+            )}
+            <p className="text-[10px] text-gray-500 mt-1">
+              Network &rarr; Settings &rarr; Control Plane &rarr; Integrations &rarr; Your API Keys &rarr; Create API Key
+              {host.trim() && (
+                <>
+                  {' '}&mdash;{' '}
+                  <a
+                    href={`${normalizeHost(host.trim())}/network/default/settings/control-plane/integrations`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300 underline"
+                  >
+                    Take me there
+                  </a>
+                </>
+              )}
+            </p>
+          </div>
+        )}
+
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="text-xs text-gray-400 hover:text-gray-300 flex items-center gap-1"
+        >
+          <span>{showAdvanced ? '\u25BE' : '\u25B8'}</span> Advanced
+        </button>
+
+        {showAdvanced && (
+          <div className="space-y-3 pl-3 border-l border-gray-700">
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1">Site</label>
+              <input
+                type="text"
+                value={site}
+                onChange={e => setSite(e.target.value)}
+                className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-gray-300">
+              <input
+                type="checkbox"
+                checked={!verifySsl}
+                onChange={e => setVerifySsl(!e.target.checked)}
+                className="rounded border-gray-600 bg-gray-900"
+              />
+              Skip SSL verification (for self-signed certificates)
+            </label>
+          </div>
+        )}
+
+        {error && (
+          <div className="px-3 py-2 rounded bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+            {error}
+          </div>
+        )}
+
+        {result && result.success && (
+          <div className="px-3 py-2 rounded bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-400">
+            Connected to {result.controller_name} (v{result.version})
+          </div>
+        )}
+
+        {!(result && result.success) && (
+          <button
+            onClick={handleTest}
+            disabled={testing || !host.trim() || !hasKey}
+            className="w-full px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {testing ? 'Testing...' : 'Test & Connect'}
+          </button>
+        )}
+      </div>
+
+      {onSkip && (
+        <div className="mt-6 text-center">
+          <div className="flex items-center gap-3 justify-center mb-3">
+            <div className="h-px flex-1 bg-gray-700" />
+            <span className="text-xs text-gray-500">or</span>
+            <div className="h-px flex-1 bg-gray-700" />
+          </div>
+          <button
+            onClick={onSkip}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+          >
+            Skip &mdash; Use Log Detection Instead
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}

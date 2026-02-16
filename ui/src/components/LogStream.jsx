@@ -112,10 +112,10 @@ export default function LogStream({ version, latestRelease }) {
   // Effective auto-refresh: paused when a row is expanded
   const isRefreshing = autoRefresh && expandedId === null
 
-  // When a row is expanded, silently check for new logs count
+  // When paused (manually or by expanding a row), silently check for new logs count
   useEffect(() => {
     if (pendingRef.current) clearInterval(pendingRef.current)
-    if (autoRefresh && expandedId !== null && filters.page === 1) {
+    if (!isRefreshing && filters.page === 1) {
       pendingRef.current = setInterval(async () => {
         try {
           const qs = new URLSearchParams()
@@ -131,7 +131,7 @@ export default function LogStream({ version, latestRelease }) {
       }, 5000)
     }
     return () => { if (pendingRef.current) clearInterval(pendingRef.current) }
-  }, [autoRefresh, expandedId, filters, data.total])
+  }, [isRefreshing, filters, data.total])
 
   // Fetch detail data when a row is expanded
   useEffect(() => {
@@ -156,16 +156,16 @@ export default function LogStream({ version, latestRelease }) {
     }
   }
 
-  const load = useCallback(async (f) => {
+  const load = useCallback(async (f, { background } = {}) => {
     try {
-      setLoading(true)
+      if (!background) setLoading(true)
       const result = await fetchLogs(f || filters)
       setData(result)
       setLastUpdate(new Date())
     } catch (err) {
       console.error('Failed to fetch logs:', err)
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
   }, [filters])
 
@@ -178,7 +178,7 @@ export default function LogStream({ version, latestRelease }) {
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current)
     if (isRefreshing && filters.page === 1) {
-      intervalRef.current = setInterval(() => load(filters), 5000)
+      intervalRef.current = setInterval(() => load(filters, { background: true }), 5000)
     }
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
@@ -200,21 +200,21 @@ export default function LogStream({ version, latestRelease }) {
   return (
     <div className="flex flex-col h-full">
       {/* Filters */}
-      <div className="px-4 py-3 border-b border-gray-800 bg-gray-900/30">
+      <div className="px-4 py-3 border-b border-gray-800 bg-gray-950">
         <FilterBar filters={filters} onChange={handleFilterChange} />
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-1.5 border-b border-gray-800/50 bg-gray-900/20">
+      <div className="flex items-center justify-between px-4 py-1.5 border-b border-gray-800/50 bg-gray-950">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
+            onClick={() => { setAutoRefresh(!autoRefresh); setPendingCount(0) }}
             className={`flex items-center gap-1.5 text-[11px] transition-colors ${
-              isRefreshing ? 'text-emerald-400' : autoRefresh && expandedId !== null ? 'text-amber-400' : 'text-gray-400'
+              isRefreshing ? 'text-emerald-400' : 'text-amber-400'
             }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${isRefreshing ? 'bg-emerald-400 animate-pulse' : autoRefresh && expandedId !== null ? 'bg-amber-400' : 'bg-gray-600'}`} />
-            {isRefreshing ? 'Live' : autoRefresh && expandedId !== null ? 'Paused' : 'Paused'}
+            <span className={`w-1.5 h-1.5 rounded-full ${isRefreshing ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+            {isRefreshing ? 'Live' : 'Paused'}
           </button>
           {pendingCount > 0 && (
             <button

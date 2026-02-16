@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 _SERVICE_MAP: Dict[Tuple[int, str], str] = {}
 _SERVICE_DESC_MAP: Dict[Tuple[int, str], str] = {}
 
+# Display-friendly overrides for IANA service names
+_DISPLAY_OVERRIDES = {
+    'domain': 'DNS',
+}
+
 def _load_service_maps():
     """
     Load IANA service names and descriptions from CSV at module initialization.
@@ -135,4 +140,5 @@ def get_service_name(port: Optional[int], protocol: Optional[str] = 'tcp') -> Op
     # Normalize protocol to lowercase (parsers.py extracts as uppercase from iptables)
     normalized_protocol = (protocol or 'tcp').lower()
 
-    return _SERVICE_MAP.get((port, normalized_protocol))
+    name = _SERVICE_MAP.get((port, normalized_protocol))
+    return _DISPLAY_OVERRIDES.get(name, name) if name else None
