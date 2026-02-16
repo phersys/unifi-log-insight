@@ -20,13 +20,16 @@ Built for home network monitoring — runs as a single Docker container with zer
 
 - 📡 **Syslog Receiver** — Listens on UDP 514, parses iptables firewall rules, DHCP leases, Wi-Fi events, and system messages
 - 🌍 **IP Enrichment** — MaxMind GeoLite2 (country, city, coordinates), ASN lookup, AbuseIPDB threat intelligence (score, 23 attack categories, usage type, Tor/whitelist detection, report counts), reverse DNS
-- 🧙 **Setup Wizard** — First-launch wizard auto-detects WAN interface(s) and network segments from live traffic, lets you label each interface (e.g., "IoT" instead of "br20"), and saves everything to the database — no config files to edit
+- 🧙 **Setup Wizard** — First-launch wizard with two paths: **UniFi API** (auto-detects WAN, VLANs, and network topology from the controller) or **Log Detection** (discovers interfaces from live traffic). Labels each interface (e.g., "IoT" instead of "br20") and saves everything — no config files to edit
 - 🔀 **Multi-WAN Support** — Select multiple WAN interfaces for failover or load-balanced setups; reconfigure anytime via the Settings gear
 - 🧭 **Smart Direction Detection** — Classifies traffic as inbound, outbound, inter-VLAN, or local with automatic WAN IP learning
+- 🔌 **UniFi API Integration** — Optional connection to your UniFi Controller for automatic network discovery, device name resolution, and firewall management. Requires a UniFi API key (Local Admin)
+- 🛡️ **Firewall Rule Manager** — View all firewall policies in a zone matrix with bulk syslog toggle. See which rules have logging enabled and toggle them without leaving the app
+- 📛 **Device Name Resolution** — Background polling of UniFi clients and devices enriches logs with friendly device names (e.g., "SwitchBot Hub" instead of "10.10.20.205") via MAC and IP matching
 - 🔤 **DNS Ready** — Parser supports DNS query/answer logging (requires additional Unifi configuration — see [DNS Logging](#-dns-logging) below)
 - 📺 **Live UI** — Auto-refreshing log stream with expandable detail rows, intelligent pause/resume when inspecting logs
 - 🔎 **Filters** — Filter by log type, time range, action (allow/block/redirect), direction, IP address, rule name, and raw text search
-- 📊 **Dashboard** — Traffic breakdown by type and direction, logs-per-hour chart, top blocked countries/IPs (WAN IP and non-routable excluded), top threat IPs (enriched with ASN, city, rDNS, decoded categories, last seen), top DNS queries
+- 📊 **Dashboard** — Traffic breakdown by type and direction, traffic-over-time chart, top blocked/allowed countries and IPs, top threat IPs (enriched with ASN, city, rDNS, decoded categories, last seen), top active internal devices, top services, top DNS queries
 - 🛡️ **AbuseIPDB Blacklist** — Daily pull of 10,000 highest-risk IPs pre-seeded into the threat cache for instant scoring without API calls (separate quota: 5 calls/day)
 - 💾 **Persistent Threat Cache** — `ip_threats` table stores AbuseIPDB results (score, categories, usage type, Tor status, report counts) for 4-day reuse, surviving container rebuilds. Three-tier lookup: in-memory → PostgreSQL → API call
 - 🔄 **Backfill Daemon** — Automatically patches historical logs that have NULL threat scores against the persistent cache
@@ -149,6 +152,10 @@ TZ=Europe/London
 
 # Log level (DEBUG shows periodic stats and all access logs; default: INFO)
 # LOG_LEVEL=INFO
+
+# UniFi API (optional — can also be configured via Settings UI)
+# UNIFI_HOST=https://192.168.1.1
+# UNIFI_API_KEY=your_unifi_api_key_here
 ```
 
 Then run:
@@ -170,9 +177,22 @@ docker compose up -d --build
 
 Navigate to `http://<docker-host-ip>:8090`
 
-On first launch, a **Setup Wizard** will guide you through:
+On first launch, a **Setup Wizard** will guide you through configuration. You can choose between two paths:
 
-1. **WAN Detection** — Select your WAN interface(s) so the system can classify traffic as inbound, outbound, or inter-VLAN. Common interfaces:
+#### Path A — UniFi API (recommended)
+
+Connect to your UniFi Controller to auto-detect everything:
+
+1. **Connect** — Enter your controller IP and API key. The wizard tests connectivity and saves credentials.
+2. **WAN Detection** — WAN interfaces are auto-detected from the controller's network config.
+3. **Network Labels** — VLANs and subnets are pre-populated from the controller. Just review and label.
+4. **Firewall Rules** — View your zone matrix and enable syslog on firewall rules directly from the wizard.
+
+#### Path B — Log Detection
+
+If you don't want to connect the API, the wizard falls back to log-based discovery:
+
+1. **WAN Detection** — Select your WAN interface(s) from interfaces seen in traffic. Common interfaces:
 
    | UniFi Model | Typical WAN Interface |
    |---|---|
@@ -249,6 +269,11 @@ graph LR
 | `MAXMIND_LICENSE_KEY` | Paired with account ID for auto-update |
 | `TZ` | Timezone for cron schedules. Defaults to UTC. Examples: `Europe/London`, `Asia/Amman`, `America/New_York` |
 | `LOG_LEVEL` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Defaults to `INFO`. Set to `WARNING` for quiet steady-state. Use `DEBUG` for troubleshooting |
+| `UNIFI_HOST` | *(optional)* UniFi Controller URL (e.g., `https://192.168.1.1`). Can also be set via the Settings UI |
+| `UNIFI_API_KEY` | *(optional)* UniFi API key (Local Admin). Can also be set via the Settings UI where it's stored encrypted |
+| `UNIFI_SITE` | *(optional)* UniFi site name. Defaults to `default` |
+| `UNIFI_VERIFY_SSL` | *(optional)* Set to `false` for self-signed certificates. Defaults to `true` |
+| `UNIFI_POLL_INTERVAL` | *(optional)* Device polling interval in seconds. Defaults to `300` (5 minutes) |
 
 ### Ports
 
@@ -336,19 +361,20 @@ The main view shows a live-updating table of parsed logs:
 - **Service filter** — Filter by detected service (HTTP, DNS, SSH, etc.)
 - **Text search** — Filter by IP, rule name, or raw log content
 
-Click any row to expand full details including enrichment data, parsed rule breakdown, AbuseIPDB intelligence (score, decoded attack categories, usage type, hostnames, report count, last reported date, Tor/whitelist status), and raw log.
+Click any row to expand full details including enrichment data, parsed rule breakdown, AbuseIPDB intelligence (score, decoded attack categories, usage type, hostnames, report count, last reported date, Tor/whitelist status), device names (when UniFi API is connected), and raw log.
 
 The stream auto-pauses when a row is expanded and shows a count of new logs received. It resumes on collapse.
 
 ### Dashboard
 
-Aggregated views with configurable time range:
-- Total logs, blocked count, high-threat count
-- Traffic direction breakdown
-- Logs-per-hour bar chart
-- Top blocked countries and IPs (WAN IP and 0.0.0.0 auto-excluded)
+Aggregated views with configurable time range (1h to 60d):
+- Total logs, blocked count, high-threat count, allowed count
+- Traffic direction breakdown (inbound, outbound, VLAN, NAT)
+- Traffic-over-time area chart and traffic-by-action stacked chart (allowed/blocked/redirect)
+- Top blocked countries and IPs (external and internal, with device names from UniFi)
 - Top threat IPs — enriched with ASN, city, rDNS, decoded attack categories, last seen
-- Top DNS queries (when DNS logging is enabled)
+- Top allowed destinations and active internal devices (with device name + VLAN badges)
+- Top blocked/allowed services, top DNS queries
 
 ---
 
@@ -368,6 +394,15 @@ Aggregated views with configurable time range:
 | `GET /api/setup/wan-candidates` | Auto-detected WAN interface candidates |
 | `GET /api/setup/network-segments` | Discovered network segments with suggested labels |
 | `POST /api/enrich/{ip}` | Force fresh AbuseIPDB lookup for an IP |
+| `GET /api/settings/unifi` | Current UniFi API settings |
+| `PUT /api/settings/unifi` | Update UniFi API settings |
+| `POST /api/settings/unifi/test` | Test UniFi connection and save on success |
+| `GET /api/firewall/policies` | All firewall policies with zone data |
+| `PATCH /api/firewall/policies/{id}` | Toggle syslog on a firewall policy |
+| `POST /api/firewall/policies/bulk-logging` | Bulk-toggle syslog on multiple policies |
+| `GET /api/unifi/clients` | Cached UniFi client list |
+| `GET /api/unifi/devices` | Cached UniFi infrastructure devices |
+| `GET /api/unifi/status` | UniFi polling status |
 
 ---
 
