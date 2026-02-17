@@ -91,6 +91,7 @@ if os.path.exists(STATIC_DIR):
 
     # SPA catch-all: serve index.html for any non-API route
     _static_root = Path(STATIC_DIR).resolve()
+    _NO_CACHE = {"Cache-Control": "no-cache"}
 
     @app.get("/{path:path}")
     async def serve_spa(path: str):
@@ -98,15 +99,15 @@ if os.path.exists(STATIC_DIR):
         decoded = unquote(path)
         resolved = (_static_root / decoded).resolve()
         if resolved != _static_root and not str(resolved).startswith(str(_static_root) + os.sep):
-            return FileResponse(_static_root / "index.html")
+            return FileResponse(_static_root / "index.html", headers=_NO_CACHE)
         if decoded and resolved.is_file():
             return FileResponse(resolved)
         # Otherwise serve index.html for SPA routing
-        return FileResponse(_static_root / "index.html")
+        return FileResponse(_static_root / "index.html", headers=_NO_CACHE)
 
     @app.get("/")
     async def serve_root():
-        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"), headers=_NO_CACHE)
 
     logger.info("Serving UI from %s", STATIC_DIR)
 else:
