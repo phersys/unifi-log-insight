@@ -176,6 +176,42 @@ export async function fetchUniFiStatus() {
   return resp.json()
 }
 
+// ── Config Export/Import ─────────────────────────────────────────────────────
+
+export async function exportConfig(includeApiKey = false) {
+  const resp = await fetch(`${BASE}/config/export?include_api_key=${includeApiKey}`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function importConfig(config) {
+  const resp = await fetch(`${BASE}/config/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+// ── Retention Configuration ─────────────────────────────────────────────────
+
+export async function fetchRetentionConfig() {
+  const resp = await fetch(`${BASE}/config/retention`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function updateRetentionConfig(config) {
+  const resp = await fetch(`${BASE}/config/retention`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
 // ── Version Check ────────────────────────────────────────────────────────────
 
 export async function fetchLatestRelease() {

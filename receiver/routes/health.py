@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException
 
-from deps import get_conn, put_conn, APP_VERSION
+from db import get_config
+from deps import get_conn, put_conn, enricher_db, APP_VERSION
 
 logger = logging.getLogger('api.health')
 
@@ -19,11 +20,20 @@ def health():
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM logs")
-            total = cur.fetchone()[0]
-            cur.execute("SELECT MAX(timestamp) FROM logs")
-            latest = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*), MIN(timestamp), MAX(timestamp) FROM logs")
+            row = cur.fetchone()
+            total, oldest, latest = row[0], row[1], row[2]
         conn.commit()
+
+        # Retention days: system_config > env > default
+        retention_val = get_config(enricher_db, 'retention_days')
+        if retention_val is not None:
+            retention_days = int(retention_val)
+        else:
+            try:
+                retention_days = int(os.environ.get('RETENTION_DAYS', '60'))
+            except (ValueError, TypeError):
+                retention_days = 60
 
         # AbuseIPDB rate limit stats (written by receiver process)
         abuseipdb = None
@@ -64,7 +74,9 @@ def health():
             'status': 'ok',
             'version': APP_VERSION,
             'total_logs': total,
+            'oldest_log_at': oldest.isoformat() if oldest else None,
             'latest_log': latest.isoformat() if latest else None,
+            'retention_days': retention_days,
             'abuseipdb': abuseipdb,
             'maxmind_last_update': maxmind_last_update,
             'maxmind_next_update': maxmind_next_update,

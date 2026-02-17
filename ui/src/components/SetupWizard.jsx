@@ -264,17 +264,22 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                   </div>
 
                   {(apiNetConfig?.wan_interfaces || []).some(w => (w.active || !!w.wan_ip) && w.detected_from !== 'device') && (
-                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
-                      <p className="text-xs text-yellow-400 font-medium mb-1.5">
-                        Could not detect the physical interface from your gateway &mdash; using a best guess.
-                        Verify it matches your hardware:
-                      </p>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-gray-400 font-mono" style={{ maxWidth: '16rem' }}>
-                        <span>UDR (PPPoE):</span><span>ppp0</span>
-                        <span>UDR (DHCP):</span><span>eth3</span>
-                        <span>UDM / UDM-SE:</span><span>eth8</span>
-                        <span>UDM-Pro:</span><span>eth8 or eth9</span>
-                        <span>USG:</span><span>eth0</span>
+                    <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
+                      <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                      </svg>
+                      <div>
+                        <p className="text-xs text-yellow-400/90 mb-1.5">
+                          Could not detect the physical interface from your gateway &mdash; using a best guess.
+                          Verify it matches your hardware:
+                        </p>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-gray-400 font-mono" style={{ maxWidth: '16rem' }}>
+                          <span>UDR (PPPoE):</span><span>ppp0</span>
+                          <span>UDR (DHCP):</span><span>eth3</span>
+                          <span>UDM / UDM-SE:</span><span>eth8</span>
+                          <span>UDM-Pro:</span><span>eth8 or eth9</span>
+                          <span>USG:</span><span>eth0</span>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -362,8 +367,11 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                   )}
 
                   {(apiNetConfig?.wan_interfaces || []).some(w => !w.active && !w.wan_ip) && (
-                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
-                      <p className="text-sm text-yellow-400">
+                    <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
+                      <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                      </svg>
+                      <p className="text-xs text-yellow-400/90">
                         Inactive WAN interfaces are excluded from labeling. If you activate
                         them later, re-run the setup wizard via Settings &rarr; Reconfigure
                         to label them correctly.

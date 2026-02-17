@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fetchStats } from '../api'
-import { formatNumber, FlagIcon, decodeThreatCategories, LOG_TYPE_STYLES } from '../utils'
+import { formatNumber, FlagIcon, decodeThreatCategories, LOG_TYPE_STYLES, timeRangeToDays, filterVisibleRanges } from '../utils'
 
-const TIME_RANGES = ['1h', '6h', '24h', '7d', '30d', '60d']
+const TIME_RANGES = ['1h', '6h', '24h', '7d', '30d', '60d', '90d', '180d', '365d']
 
 export function DashboardSkeleton() {
   return (
@@ -120,7 +120,10 @@ function ActionTooltip({ active, payload, timeRange }) {
   )
 }
 
-const RANGE_MS = { '1h': 3600e3, '6h': 21600e3, '24h': 86400e3, '7d': 604800e3, '30d': 2592e6, '60d': 5184e6 }
+const RANGE_MS = {
+  '1h': 3600e3, '6h': 21600e3, '24h': 86400e3, '7d': 604800e3,
+  '30d': 2592e6, '60d': 5184e6, '90d': 7776e6, '180d': 15552e6, '365d': 31536e6,
+}
 
 function isSparseData(data, timeRange) {
   if (!data || data.length < 2) return true
@@ -228,10 +231,25 @@ function TopList({ title, items, renderItem }) {
   )
 }
 
-export default function Dashboard() {
+export default function Dashboard({ maxFilterDays }) {
   const [timeRange, setTimeRange] = useState('24h')
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+
+  const visibleRanges = filterVisibleRanges(TIME_RANGES, maxFilterDays)
+
+  // Auto-correct selected range if it exceeds maxFilterDays
+  useEffect(() => {
+    if (!maxFilterDays) return
+    const currentDays = timeRangeToDays(timeRange)
+    if (currentDays >= 1 && currentDays > maxFilterDays) {
+      const largest = [...TIME_RANGES].reverse().find(tr => {
+        const d = timeRangeToDays(tr)
+        return d < 1 || d <= maxFilterDays
+      })
+      if (largest) setTimeRange(largest)
+    }
+  }, [maxFilterDays]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let mounted = true
@@ -276,7 +294,7 @@ export default function Dashboard() {
     <div className="p-4 space-y-4 overflow-auto max-h-full">
       {/* Time range selector */}
       <div className="flex items-center gap-1">
-        {TIME_RANGES.map(tr => (
+        {visibleRanges.map(tr => (
           <button
             key={tr}
             onClick={() => setTimeRange(tr)}

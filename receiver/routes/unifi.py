@@ -3,7 +3,10 @@
 import logging
 import os
 
+import requests as _requests
+
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 from psycopg2.extras import RealDictCursor
 
 from db import get_config, set_config, encrypt_api_key, decrypt_api_key
@@ -114,6 +117,23 @@ def dismiss_upgrade():
     """Permanently dismiss the v2.0 upgrade modal."""
     set_config(enricher_db, 'upgrade_v2_dismissed', True)
     return {"success": True}
+
+
+@router.get("/api/unifi/gateway-image")
+def get_gateway_image():
+    """Proxy the gateway device thumbnail from the controller."""
+    if not unifi_api.host:
+        raise HTTPException(status_code=404, detail="No gateway configured")
+    url = f"{unifi_api.host.rstrip('/')}/assets/images/48.png"
+    try:
+        resp = _requests.get(url, verify=unifi_api.verify_ssl, timeout=5)
+        ct = resp.headers.get('content-type', '')
+        if resp.status_code != 200 or not ct.startswith('image/'):
+            raise HTTPException(status_code=404, detail="Image not available")
+        return Response(content=resp.content, media_type=ct,
+                        headers={"Cache-Control": "public, max-age=86400"})
+    except _requests.RequestException as e:
+        raise HTTPException(status_code=404, detail="Image not available") from e
 
 
 @router.get("/api/firewall/policies")

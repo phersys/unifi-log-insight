@@ -16,6 +16,9 @@ def parse_time_range(time_range: str) -> Optional[datetime]:
         '7d': timedelta(days=7),
         '30d': timedelta(days=30),
         '60d': timedelta(days=60),
+        '90d': timedelta(days=90),
+        '180d': timedelta(days=180),
+        '365d': timedelta(days=365),
     }
     delta = mapping.get(time_range)
     return now - delta if delta else None

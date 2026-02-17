@@ -28,6 +28,7 @@ issues.md
 #AI
 .claude
 claude.md
+CLAUDE.md
 skills.md
 agents.md
 
@@ -37,3 +38,4 @@ agents.md
 unifi_logs_backup.dump
 nul
 ui/package-lock.json
+CLAUDE.md

@@ -41,7 +41,9 @@ New Setup and Firewall Syslog Bulk Control
 - 🏷️ **Dynamic Interface Labels** — Color-coded, user-defined labels showing traffic flow direction; labels apply retroactively to all existing logs
 - 🎛️ **Interface Filter** — Filter logs by network interface with multi-select, searching by both interface name and label
 - 📥 **CSV Export** — Download filtered results up to 100K rows
-- 🗑️ **Auto-Retention** — 60-day retention for firewall/DHCP/Wi-Fi, 10-day for DNS
+- 🗑️ **Configurable Retention** — Default 60-day retention for firewall/DHCP/Wi-Fi, 10-day for DNS. Adjustable from 60 to 365 days via Settings slider or `RETENTION_DAYS`/`DNS_RETENTION_DAYS` env vars
+- 💾 **Config Backup & Restore** — Export all settings (WAN, network labels, UniFi connection, retention) as a JSON file and re-import on the same or a new instance
+- 📱 **Mobile Responsive** — Collapsible filter panel, hidden stats bar, and full-width log table on small screens
 - 🔁 **MaxMind Auto-Update** — Scheduled GeoLite2 database refresh with hot-reload (no restart needed)
 
 ---
@@ -158,6 +160,10 @@ TZ=Europe/London
 # UniFi API (optional — can also be configured via Settings UI)
 # UNIFI_HOST=https://192.168.1.1
 # UNIFI_API_KEY=your_unifi_api_key_here
+
+# Log retention (optional — can also be configured via Settings UI)
+# RETENTION_DAYS=60
+# DNS_RETENTION_DAYS=10
 ```
 
 Then run:
@@ -276,6 +282,8 @@ graph LR
 | `UNIFI_SITE` | *(optional)* UniFi site name. Defaults to `default` |
 | `UNIFI_VERIFY_SSL` | *(optional)* Set to `false` for self-signed certificates. Defaults to `true` |
 | `UNIFI_POLL_INTERVAL` | *(optional)* Device polling interval in seconds. Defaults to `300` (5 minutes) |
+| `RETENTION_DAYS` | *(optional)* Log retention in days for firewall/DHCP/Wi-Fi/system. Defaults to `60`. Can also be set via Settings UI |
+| `DNS_RETENTION_DAYS` | *(optional)* DNS log retention in days. Defaults to `10`. Can also be set via Settings UI |
 
 ### Ports
 
@@ -286,12 +294,12 @@ graph LR
 
 ### Retention Policy
 
-| Log Type | Retention |
-|---|---|
-| Firewall, DHCP, Wi-Fi, System | 60 days |
-| DNS (when enabled) | 10 days |
+| Log Type | Default | Range |
+|---|---|---|
+| Firewall, DHCP, Wi-Fi, System | 60 days | 60–365 days |
+| DNS (when enabled) | 10 days | 1–365 days |
 
-Cleanup runs daily at 03:00 (container local time).
+Retention is configurable via the **Settings > Data & Backups** slider, or via `RETENTION_DAYS` / `DNS_RETENTION_DAYS` environment variables. Cleanup runs daily at 03:00 (container local time).
 
 ---
 
@@ -356,7 +364,7 @@ The system uses AbuseIPDB response headers (`X-RateLimit-Remaining`, `Retry-Afte
 The main view shows a live-updating table of parsed logs:
 
 - **Type filters** — Toggle firewall, DNS, DHCP, Wi-Fi, system
-- **Time range** — 1h, 6h, 24h, 7d, 30d, 60d
+- **Time range** — 1h, 6h, 24h, 7d, 30d, 60d (up to 365d based on retention setting)
 - **Action filters** — Allow, block, redirect
 - **Direction filters** — Inbound, outbound, VLAN, NAT
 - **Interface filter** — Multi-select by interface name or label (e.g., "IoT", "br20")
@@ -369,7 +377,7 @@ The stream auto-pauses when a row is expanded and shows a count of new logs rece
 
 ### Dashboard
 
-Aggregated views with configurable time range (1h to 60d):
+Aggregated views with configurable time range (1h to 365d, based on retention setting):
 - Total logs, blocked count, high-threat count, allowed count
 - Traffic direction breakdown (inbound, outbound, VLAN, NAT)
 - Traffic-over-time area chart and traffic-by-action stacked chart (allowed/blocked/redirect)
@@ -405,6 +413,10 @@ Aggregated views with configurable time range (1h to 60d):
 | `GET /api/unifi/clients` | Cached UniFi client list |
 | `GET /api/unifi/devices` | Cached UniFi infrastructure devices |
 | `GET /api/unifi/status` | UniFi polling status |
+| `GET /api/config/export` | Export all settings as JSON |
+| `POST /api/config/import` | Import settings from JSON backup |
+| `GET /api/config/retention` | Current retention configuration |
+| `POST /api/config/retention` | Update retention settings |
 
 ---
 

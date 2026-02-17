@@ -341,16 +341,11 @@ function ZoneMatrix({ zones, cells, selectedCell, onSelectCell, totalPolicyCount
               </tr>
             ))}
           </tbody>
-          <tfoot>
-            <tr>
-              <td />
-              <td colSpan={zones.length + 1} className="text-[11px] text-[#676f79] pt-2 pb-4">
-                Zone pairs labels may differ slightly from the UniFi Controller due to custom rule evaluation.
-              </td>
-            </tr>
-          </tfoot>
         </table>
       </div>
+      <p className="text-[11px] text-[#676f79] mt-2">
+        Zone pairs labels may differ slightly from the UniFi Controller due to custom rule evaluation.
+      </p>
     </div>
   )
 }

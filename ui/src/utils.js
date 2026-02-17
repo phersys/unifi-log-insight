@@ -75,7 +75,7 @@ export const DIRECTION_ICONS = {
   inbound: '↓',
   outbound: '↑',
   inter_vlan: '↔',
-  nat: '⤴',
+  nat: '⤴\uFE0E',
   local: '⟳',
 }
 
@@ -144,6 +144,25 @@ export const DIRECTION_COLORS = {
   inter_vlan: 'text-gray-300',
   nat: 'text-yellow-400',
   local: 'text-gray-400',
+}
+
+// Convert time range string (e.g. '7d', '24h') to days
+export function timeRangeToDays(value) {
+  const match = value.match(/^(\d+)([hd])$/)
+  if (!match) return 0
+  const num = parseInt(match[1], 10)
+  return match[2] === 'h' ? num / 24 : num
+}
+
+// Filter time ranges to those within maxFilterDays, plus one "all data" option
+export function filterVisibleRanges(ranges, maxFilterDays, getValue = v => v) {
+  if (!maxFilterDays) return ranges
+  return ranges.filter((tr, i) => {
+    const days = timeRangeToDays(getValue(tr))
+    if (days < 1 || days <= maxFilterDays) return true
+    const prevDays = i > 0 ? timeRangeToDays(getValue(ranges[i - 1])) : 0
+    return prevDays >= 1 && prevDays < maxFilterDays
+  })
 }
 
 // AbuseIPDB category code → human-readable label

@@ -1,4 +1,4 @@
-import React, { Suspense, useState, useEffect } from 'react'
+import React, { Suspense, useState, useEffect, useMemo } from 'react'
 import LogStream from './components/LogStream'
 import SetupWizard from './components/SetupWizard'
 import SettingsOverlay from './components/SettingsOverlay'
@@ -128,6 +128,15 @@ export default function App() {
     })
   }, [])
 
+  const maxFilterDays = useMemo(() => {
+    if (!health) return 365
+    if (health.oldest_log_at) {
+      return Math.ceil((Date.now() - new Date(health.oldest_log_at).getTime()) / 86400e3)
+    }
+    // No logs yet — fall back to retention period
+    return health.retention_days || 60
+  }, [health])
+
   if (!configLoaded) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-950 text-gray-300 text-sm">
@@ -152,7 +161,7 @@ export default function App() {
         reloadConfig().catch(() => {})
         setShowReconfig(false)
       }}
-      onCancel={() => setShowReconfig(false)}
+      onCancel={() => { setShowReconfig(false); setShowSettings(true) }}
     />
   }
 
@@ -281,21 +290,23 @@ export default function App() {
         <div className="flex items-center gap-3">
           {health && (
             <>
-              <span className="text-[10px] text-gray-400">
-                AbuseIPDB: {formatAbuseIPDB(health.abuseipdb)}
-              </span>
-              <span className="text-[10px] text-gray-600">|</span>
-              <span className="text-[10px] text-gray-400">
-                MaxMind: {formatShortDate(health.maxmind_last_update)}
-              </span>
-              <span className="text-[10px] text-gray-600">|</span>
-              <span className="text-[10px] text-gray-400">
-                Next pull: {formatShortDate(health.maxmind_next_update)}
-              </span>
-              <span className="text-[10px] text-gray-600">|</span>
-              <span className="text-[10px] text-gray-400">
-                {health.total_logs?.toLocaleString()} logs
-              </span>
+              <div className="hidden sm:flex items-center gap-3">
+                <span className="text-[10px] text-gray-400">
+                  AbuseIPDB: {formatAbuseIPDB(health.abuseipdb)}
+                </span>
+                <span className="text-[10px] text-gray-600">|</span>
+                <span className="text-[10px] text-gray-400">
+                  MaxMind: {formatShortDate(health.maxmind_last_update)}
+                </span>
+                <span className="text-[10px] text-gray-600">|</span>
+                <span className="text-[10px] text-gray-400">
+                  Next pull: {formatShortDate(health.maxmind_next_update)}
+                </span>
+                <span className="text-[10px] text-gray-600">|</span>
+                <span className="text-[10px] text-gray-400">
+                  {health.total_logs?.toLocaleString()} logs
+                </span>
+              </div>
               <span className={`w-1.5 h-1.5 rounded-full ${
                 health.status === 'ok' ? 'bg-emerald-400' : 'bg-red-400'
               }`} />
@@ -315,9 +326,9 @@ export default function App() {
 
       {/* Content */}
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} />}
+        {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} maxFilterDays={maxFilterDays} />}
         <Suspense fallback={<DashboardSkeleton />}>
-          {activeTab === 'dashboard' && <Dashboard />}
+          {activeTab === 'dashboard' && <Dashboard maxFilterDays={maxFilterDays} />}
         </Suspense>
       </main>
     </div>

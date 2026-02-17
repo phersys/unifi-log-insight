@@ -179,6 +179,20 @@ class Database:
                 updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )""",
             "CREATE INDEX IF NOT EXISTS idx_unifi_devices_ip ON unifi_devices (ip)",
+            # Parameterized retention cleanup function (replaces hardcoded 60/10 day version)
+            """CREATE OR REPLACE FUNCTION cleanup_old_logs(
+                general_days INTEGER DEFAULT 60,
+                dns_days INTEGER DEFAULT 10
+            ) RETURNS INTEGER AS $$
+            DECLARE deleted INTEGER;
+            BEGIN
+                DELETE FROM logs
+                WHERE (log_type = 'dns' AND timestamp < NOW() - (dns_days || ' days')::INTERVAL)
+                   OR (log_type != 'dns' AND timestamp < NOW() - (general_days || ' days')::INTERVAL);
+                GET DIAGNOSTICS deleted = ROW_COUNT;
+                RETURN deleted;
+            END;
+            $$ LANGUAGE plpgsql""",
         ]
         try:
             with self.get_conn() as conn:
@@ -324,14 +338,15 @@ class Database:
                     logger.warning("Dropped bad log row: %s — raw: %.200s", row_err, row[-1] if row else '?')
             logger.info("Row-by-row fallback: %d inserted, %d dropped", inserted, dropped)
 
-    def run_retention_cleanup(self):
+    def run_retention_cleanup(self, general_days: int = 60, dns_days: int = 10):
         """Run the retention cleanup function. Returns number of deleted rows."""
         with self.get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT cleanup_old_logs()")
+                cur.execute("SELECT cleanup_old_logs(%s, %s)", [general_days, dns_days])
                 deleted = cur.fetchone()[0]
         if deleted > 0:
-            logger.info("Retention cleanup: deleted %d old logs", deleted)
+            logger.info("Retention cleanup: deleted %d old logs (general=%dd, dns=%dd)",
+                        deleted, general_days, dns_days)
         return deleted
 
     def get_stats(self) -> dict:

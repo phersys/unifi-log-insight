@@ -32,7 +32,7 @@ const TOGGLEABLE_COLUMNS = [
   { key: 'categories', label: 'Categories' },
 ]
 
-export default function LogStream({ version, latestRelease }) {
+export default function LogStream({ version, latestRelease, maxFilterDays }) {
   const [filters, setFilters] = useState(() => {
     const restored = { ...DEFAULT_FILTERS }
     try {
@@ -201,7 +201,7 @@ export default function LogStream({ version, latestRelease }) {
     <div className="flex flex-col h-full">
       {/* Filters */}
       <div className="px-4 py-3 border-b border-gray-800 bg-gray-950">
-        <FilterBar filters={filters} onChange={handleFilterChange} />
+        <FilterBar filters={filters} onChange={handleFilterChange} maxFilterDays={maxFilterDays} />
       </div>
 
       {/* Toolbar */}

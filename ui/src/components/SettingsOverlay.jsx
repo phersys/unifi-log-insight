@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
-import FirewallRules from './FirewallRules'
 import { fetchConfig, fetchUniFiSettings, fetchUniFiNetworkConfig } from '../api'
+import SettingsWanNetworks from './SettingsWanNetworks'
+import SettingsFirewall from './SettingsFirewall'
+import SettingsDataBackups from './SettingsDataBackups'
 
 function getVlanId(iface) {
   if (iface === 'br0') return 1
@@ -8,10 +10,43 @@ function getVlanId(iface) {
   return match ? parseInt(match[1]) : null
 }
 
+const SECTIONS = [
+  {
+    id: 'wan-networks',
+    label: 'WAN & Networks',
+    icon: (
+      <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
+      </svg>
+    ),
+  },
+  {
+    id: 'firewall',
+    label: 'Firewall',
+    icon: (
+      <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+      </svg>
+    ),
+  },
+  {
+    id: 'data-backups',
+    label: 'Data & Backups',
+    icon: (
+      <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z" />
+        <path d="M3 7v3c0 1.657 3.134 3 7 3s7-1.343 7-3V7c0 1.657-3.134 3-7 3S3 8.657 3 7z" />
+        <path d="M17 5c0 1.657-3.134 3-7 3S3 6.657 3 5s3.134-3 7-3 7 1.343 7 3z" />
+      </svg>
+    ),
+  },
+]
+
 export default function SettingsOverlay({ onClose, onRestartWizard }) {
   const [config, setConfig] = useState(null)
   const [unifiSettings, setUnifiSettings] = useState(null)
   const [netConfig, setNetConfig] = useState(null)
+  const [activeSection, setActiveSection] = useState('wan-networks')
 
   useEffect(() => {
     fetchConfig().then(setConfig).catch(() => {})
@@ -86,167 +121,48 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
         </button>
       </header>
 
-      {/* Content */}
-      <main className="flex-1 overflow-auto">
-        <div className="max-w-6xl mx-auto py-8 px-6 space-y-8">
+      {/* Sidebar + Content */}
+      <main className="flex-1 flex overflow-hidden">
+        {/* Sidebar */}
+        <nav className="w-52 shrink-0 border-r border-gray-800 bg-gray-950 py-4 overflow-y-auto">
+          {SECTIONS.map(section => (
+            <button
+              key={section.id}
+              onClick={() => setActiveSection(section.id)}
+              className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
+                activeSection === section.id
+                  ? 'bg-gray-800/60 text-white border-r-2 border-blue-500'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'
+              }`}
+            >
+              {section.icon}
+              {section.label}
+            </button>
+          ))}
+        </nav>
 
-          {/* ── UniFi Gateway ─────────────────────────────────────── */}
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-                UniFi Gateway
-              </h2>
-              {unifiEnabled && (
-                <button
-                  onClick={onRestartWizard}
-                  className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-                >
-                  Reconfigure
-                </button>
-              )}
-            </div>
-            {unifiEnabled ? (
-              <div className="rounded-lg border border-gray-700 bg-gray-950 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-200">
-                    {unifiSettings?.host || 'UniFi Gateway'}
-                  </span>
-                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    Online
-                  </span>
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {unifiSettings?.controller_name
-                    ? `${unifiSettings.controller_name}${unifiSettings.controller_version ? ` (v${unifiSettings.controller_version})` : ''}`
-                    : 'Connected via API'}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-lg border border-gray-700 bg-gray-950 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500">Not configured</span>
-                  <button
-                    onClick={onRestartWizard}
-                    className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-                  >
-                    Set up
-                  </button>
-                </div>
-              </div>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto py-8 px-6">
+          <div className="max-w-6xl mx-auto">
+            {activeSection === 'wan-networks' && (
+              <SettingsWanNetworks
+                unifiEnabled={unifiEnabled}
+                unifiSettings={unifiSettings}
+                wanCards={wanCards}
+                networkCards={networkCards}
+                onRestartWizard={onRestartWizard}
+              />
             )}
-          </section>
-
-          {/* ── WAN Interfaces ──────────────────────────────────── */}
-          <section>
-            <h2 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wider">
-              WAN Interfaces
-            </h2>
-            {wanCards.length > 0 ? (
-              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-                {wanCards.map(wan => (
-                  <div key={wan.iface} className="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-950 px-4 py-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-200 truncate">
-                          {wan.name}
-                        </span>
-                        {wan.type && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
-                            {wan.type}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs font-mono text-gray-500">{wan.iface}</span>
-                        {wan.wanIp && (
-                          <span className="text-xs font-mono text-gray-500">{wan.wanIp}</span>
-                        )}
-                      </div>
-                    </div>
-                    {wan.active != null && (
-                      <div className="shrink-0 ml-3">
-                        {wan.active ? (
-                          <span className="flex items-center gap-1.5 text-[11px] text-emerald-400">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                            Active
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                            <span className="w-1.5 h-1.5 rounded-full bg-gray-600" />
-                            Inactive
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-gray-700 bg-gray-950 p-6 text-center text-sm text-gray-500">
-                No WAN interfaces configured
-              </div>
+            {activeSection === 'firewall' && (
+              <SettingsFirewall
+                unifiEnabled={unifiEnabled}
+                onRestartWizard={onRestartWizard}
+              />
             )}
-          </section>
-
-          {/* ── Network Segments ─────────────────────────────────── */}
-          <section>
-            <h2 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wider">
-              Network Labels
-            </h2>
-            {networkCards.length > 0 ? (
-              <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                {networkCards.map(net => (
-                  <div key={net.iface} className="flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-950 px-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-200 truncate">{net.label}</span>
-                        {net.vlanId != null && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">
-                            VLAN {net.vlanId}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs font-mono text-gray-500">{net.iface}</span>
-                        {net.subnet && (
-                          <span className="text-xs font-mono text-gray-600">{net.subnet}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-gray-700 bg-gray-950 p-6 text-center text-sm text-gray-500">
-                No network labels configured
-              </div>
+            {activeSection === 'data-backups' && (
+              <SettingsDataBackups />
             )}
-          </section>
-
-          {/* ── Firewall Rules ────────────────────────────────────── */}
-          <section>
-            <h2 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wider">
-              Firewall Rules
-            </h2>
-            {unifiEnabled ? (
-              <div className="rounded-lg border border-gray-700 bg-gray-950 p-4">
-                <FirewallRules />
-              </div>
-            ) : (
-              <div className="rounded-lg border border-gray-700 bg-gray-950 p-6 text-center">
-                <p className="text-sm text-gray-400 mb-3">
-                  Connect your UniFi controller to manage firewall rules.
-                </p>
-                <button
-                  onClick={onRestartWizard}
-                  className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-                >
-                  Run Setup Wizard
-                </button>
-              </div>
-            )}
-          </section>
+          </div>
         </div>
       </main>
     </div>

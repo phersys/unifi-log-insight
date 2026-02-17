@@ -23,10 +23,15 @@ def get_stats(
     if not cutoff:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
 
-    bucket_map = {'1h': 'hour', '6h': 'hour', '24h': 'hour', '7d': 'day', '30d': 'day', '60d': 'week'}
-    bucket = bucket_map.get(time_range, 'hour')
-    if bucket not in ('hour', 'day', 'week'):
-        bucket = 'hour'
+    bucket_map = {
+        '1h': 'hour', '6h': 'hour', '24h': 'hour',
+        '7d': 'day', '30d': 'day', '60d': 'day',
+        '90d': 'week',
+        '180d': 'month', '365d': 'month',
+    }
+    bucket = bucket_map.get(time_range, 'day')
+    if bucket not in ('hour', 'day', 'week', 'month'):
+        bucket = 'day'
 
     conn = get_conn()
     try:

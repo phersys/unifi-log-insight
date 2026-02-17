@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { fetchServices, fetchInterfaces } from '../api'
-import { getInterfaceName, DIRECTION_ICONS, DIRECTION_COLORS, LOG_TYPE_STYLES, ACTION_STYLES } from '../utils'
+import { getInterfaceName, DIRECTION_ICONS, DIRECTION_COLORS, LOG_TYPE_STYLES, ACTION_STYLES, timeRangeToDays, filterVisibleRanges } from '../utils'
 
 const LOG_TYPES = ['firewall', 'dns', 'dhcp', 'wifi', 'system']
 const TIME_RANGES = [
@@ -10,11 +10,14 @@ const TIME_RANGES = [
   { value: '7d', label: '7d' },
   { value: '30d', label: '30d' },
   { value: '60d', label: '60d' },
+  { value: '90d', label: '90d' },
+  { value: '180d', label: '180d' },
+  { value: '365d', label: '365d' },
 ]
 const ACTIONS = ['allow', 'block', 'redirect']
 const DIRECTIONS = ['inbound', 'outbound', 'inter_vlan', 'nat']
 
-export default function FilterBar({ filters, onChange }) {
+export default function FilterBar({ filters, onChange, maxFilterDays }) {
   const [ipSearch, setIpSearch] = useState(filters.ip || '')
   const [ruleSearch, setRuleSearch] = useState(filters.rule_name || '')
   const [textSearch, setTextSearch] = useState(filters.search || '')
@@ -65,6 +68,21 @@ export default function FilterBar({ filters, onChange }) {
     return () => clearTimeout(t)
   }, [textSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-correct selected range if it exceeds maxFilterDays
+  useEffect(() => {
+    if (!maxFilterDays) return
+    const currentDays = timeRangeToDays(filters.time_range)
+    if (currentDays >= 1 && currentDays > maxFilterDays) {
+      const largest = [...TIME_RANGES].reverse().find(tr => {
+        const d = timeRangeToDays(tr.value)
+        return d < 1 || d <= maxFilterDays
+      })
+      if (largest && largest.value !== filters.time_range) {
+        onChange({ ...filters, time_range: largest.value })
+      }
+    }
+  }, [maxFilterDays]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const toggleType = (type) => {
     const current = filters.log_type ? filters.log_type.split(',') : LOG_TYPES
     const updated = current.includes(type)
@@ -76,6 +94,23 @@ export default function FilterBar({ filters, onChange }) {
   const activeTypes = filters.log_type ? filters.log_type.split(',') : LOG_TYPES
   const activeActions = filters.rule_action ? filters.rule_action.split(',') : ACTIONS
   const activeDirections = filters.direction ? filters.direction.split(',') : DIRECTIONS
+
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
+
+  const visibleRanges = filterVisibleRanges(TIME_RANGES, maxFilterDays, tr => tr.value)
+
+  // Count active (non-default) filters for mobile badge
+  const activeFilterCount = [
+    filters.log_type,              // types narrowed
+    filters.rule_action,           // actions narrowed
+    filters.direction,             // directions narrowed
+    filters.time_range !== '24h' ? filters.time_range : null,
+    ipSearch,
+    ruleSearch,
+    textSearch,
+    selectedServices.length > 0 ? true : null,
+    selectedInterfaces.length > 0 ? true : null,
+  ].filter(Boolean).length
 
   const toggleAction = (action) => {
     const current = filters.rule_action ? filters.rule_action.split(',') : ACTIONS
@@ -95,6 +130,19 @@ export default function FilterBar({ filters, onChange }) {
 
   return (
     <div className="space-y-3">
+      {/* Mobile filter toggle */}
+      <button
+        onClick={() => setFiltersExpanded(v => !v)}
+        className="sm:hidden flex items-center gap-2 px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors w-full justify-between"
+      >
+        <span>Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
+        <svg className={`w-3.5 h-3.5 transition-transform ${filtersExpanded ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+        </svg>
+      </button>
+
+      {/* Filter content — always visible on desktop, collapsible on mobile */}
+      <div className={`${filtersExpanded ? 'block' : 'hidden'} sm:block space-y-3`}>
       {/* Row 1: Log types + time range */}
       <div className="flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-1.5">
@@ -115,7 +163,7 @@ export default function FilterBar({ filters, onChange }) {
 
         <div className="h-5 w-px bg-gray-700" />
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           {ACTIONS.map(action => (
             <button
               key={action}
@@ -152,7 +200,7 @@ export default function FilterBar({ filters, onChange }) {
         <div className="h-5 w-px bg-gray-700" />
 
         <div className="flex items-center gap-1">
-          {TIME_RANGES.map(tr => (
+          {visibleRanges.map(tr => (
             <button
               key={tr.value}
               onClick={() => onChange({ ...filters, time_range: tr.value })}
@@ -169,14 +217,14 @@ export default function FilterBar({ filters, onChange }) {
       </div>
 
       {/* Row 2: Text searches */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="relative">
           <input
             type="text"
             placeholder="IP address..."
             value={ipSearch}
             onChange={e => setIpSearch(e.target.value)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-40"
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40"
           />
           {ipSearch && (
             <button onClick={() => setIpSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -188,7 +236,7 @@ export default function FilterBar({ filters, onChange }) {
             placeholder="Rule name..."
             value={ruleSearch}
             onChange={e => setRuleSearch(e.target.value)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-40"
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40"
           />
           {ruleSearch && (
             <button onClick={() => setRuleSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -205,7 +253,7 @@ export default function FilterBar({ filters, onChange }) {
             }}
             onFocus={() => setShowServiceDropdown(true)}
             onBlur={() => setTimeout(() => setShowServiceDropdown(false), 200)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-40"
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40"
           />
           {selectedServices.length > 0 && (
             <button
@@ -258,7 +306,7 @@ export default function FilterBar({ filters, onChange }) {
             }}
             onFocus={() => setShowInterfaceDropdown(true)}
             onBlur={() => setTimeout(() => setShowInterfaceDropdown(false), 200)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-40"
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40"
           />
           {selectedInterfaces.length > 0 && (
             <button
@@ -311,7 +359,7 @@ export default function FilterBar({ filters, onChange }) {
             </div>
           )}
         </div>
-        <div className="relative flex-1 max-w-xs">
+        <div className="relative flex-1 sm:max-w-xs">
           <input
             type="text"
             placeholder="Search raw log..."
@@ -339,6 +387,7 @@ export default function FilterBar({ filters, onChange }) {
           Reset
         </button>
       </div>
+      </div>{/* end collapsible wrapper */}
     </div>
   )
 }

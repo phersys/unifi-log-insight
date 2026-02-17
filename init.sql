@@ -58,15 +58,20 @@ CREATE INDEX IF NOT EXISTS idx_logs_service_name ON logs (service_name) WHERE se
 CREATE INDEX IF NOT EXISTS idx_logs_type_time    ON logs (log_type, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_logs_action_time  ON logs (rule_action, timestamp DESC);
 
--- Retention cleanup function
--- DNS: 10 days, everything else: 60 days
-CREATE OR REPLACE FUNCTION cleanup_old_logs() RETURNS INTEGER AS $$
+-- Retention cleanup function (configurable periods)
+CREATE OR REPLACE FUNCTION cleanup_old_logs(
+    general_days INTEGER DEFAULT 60,
+    dns_days INTEGER DEFAULT 10
+) RETURNS INTEGER AS $$
 DECLARE
     deleted INTEGER;
 BEGIN
+    IF general_days IS NULL OR dns_days IS NULL OR general_days <= 0 OR dns_days <= 0 THEN
+        RAISE EXCEPTION 'cleanup_old_logs: days must be positive (general_days=%, dns_days=%)', general_days, dns_days;
+    END IF;
     DELETE FROM logs
-    WHERE (log_type = 'dns' AND timestamp < NOW() - INTERVAL '10 days')
-       OR (log_type != 'dns' AND timestamp < NOW() - INTERVAL '60 days');
+    WHERE (log_type = 'dns' AND timestamp < NOW() - (dns_days || ' days')::INTERVAL)
+       OR (log_type != 'dns' AND timestamp < NOW() - (general_days || ' days')::INTERVAL);
     GET DIAGNOSTICS deleted = ROW_COUNT;
     RETURN deleted;
 END;

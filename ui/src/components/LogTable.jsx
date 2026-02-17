@@ -64,7 +64,7 @@ function NetworkPath({ ifaceIn, ifaceOut }) {
 
   return (
     <span className="inline-flex items-center gap-1">
-      <span className={ifaceIn ? 'text-gray-200' : 'text-gray-400 italic'}>{ifaceIn ? getInterfaceName(ifaceIn) : 'External'}</span>
+      <span className={ifaceIn ? 'text-gray-200' : 'text-gray-400 italic'}>{ifaceIn ? getInterfaceName(ifaceIn) : 'Gateway'}</span>
       <span className="text-gray-500">→</span>
       <span className="text-gray-200">{getInterfaceName(ifaceOut)}</span>
     </span>
@@ -125,7 +125,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
         </td>
 
         {/* Source */}
-        <td className="px-2 py-1.5 text-[13px] max-w-[180px] truncate">
+        <td className="px-2 py-1.5 text-[13px] whitespace-nowrap sm:max-w-[180px] sm:truncate">
           <IPCell ip={log.src_ip} port={log.src_port} deviceName={log.src_device_name} vlan={log.src_device_vlan} />
         </td>
 
@@ -135,7 +135,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
         </td>
 
         {/* Destination */}
-        <td className="px-2 py-1.5 text-[13px] max-w-[180px] truncate">
+        <td className="px-2 py-1.5 text-[13px] whitespace-nowrap sm:max-w-[180px] sm:truncate">
           <IPCell ip={log.dst_ip} port={log.dst_port} deviceName={log.dst_device_name} vlan={log.dst_device_vlan} />
         </td>
 
@@ -152,7 +152,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* ASN */}
         {show('asn') && (
-          <td className="px-2 py-1.5 text-[12px] text-gray-400 max-w-[150px] truncate" title={log.asn_name || ''}>
+          <td className="px-2 py-1.5 text-[12px] text-gray-400 whitespace-nowrap sm:max-w-[150px] sm:truncate" title={log.asn_name || ''}>
             {log.asn_name || '—'}
           </td>
         )}
@@ -174,7 +174,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* Rule / Info */}
         {show('rule') && (
-          <td className="px-2 py-1.5 text-[12px] text-gray-400 max-w-[180px] truncate" title={infoTitle}>
+          <td className="px-2 py-1.5 text-[12px] text-gray-400 whitespace-nowrap sm:max-w-[180px] sm:truncate" title={infoTitle}>
             {infoText}
           </td>
         )}
@@ -188,7 +188,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* Threat Categories */}
         {show('categories') && (
-          <td className="px-2 py-1.5 text-[11px] text-purple-400/70 max-w-[180px] truncate" title={decodeThreatCategories(log.threat_categories) || ''}>
+          <td className="px-2 py-1.5 text-[11px] text-purple-400/70 whitespace-nowrap sm:max-w-[180px] sm:truncate" title={decodeThreatCategories(log.threat_categories) || ''}>
             {decodeThreatCategories(log.threat_categories) || <span className="text-gray-700">—</span>}
           </td>
         )}
