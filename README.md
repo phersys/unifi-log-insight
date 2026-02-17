@@ -466,9 +466,10 @@ Install directly from Unraid's Docker UI — no terminal needed.
 
 ### No logs appearing
 
-1. Verify Unifi syslog is configured and pointing to the correct IP
+1. Verify Unifi syslog is configured and pointing to the correct IP. Syslog won't appear if you haven't enabled them for each Policy in the Zone Firewall.
 2. Check the container is receiving packets: `docker logs unifi-log-insight | grep "received"`
 3. Ensure UDP port 514 isn't blocked by the host firewall
+
 
 ### GeoIP not working
 
