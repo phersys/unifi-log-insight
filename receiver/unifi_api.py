@@ -319,6 +319,29 @@ class UniFiAPI:
                      {k: {'wan_ip': v.get('wan_ip'), 'status': v.get('status')}
                       for k, v in wan_health.items()})
 
+        # ── Try to resolve physical interfaces from gateway wan1/wan2 objects ──
+        device_wan_map = {}  # networkgroup → uplink_ifname from stat/device
+        try:
+            devices = self._get('stat/device')
+            for dev in devices.get('data', []):
+                dev_type = dev.get('type', '')
+                if dev_type not in ('ugw', 'udm'):
+                    continue
+                # wan1 object → WAN, wan2 object → WAN2
+                for key, group in [('wan1', 'WAN'), ('wan2', 'WAN2')]:
+                    wan_obj = dev.get(key)
+                    if not wan_obj or not isinstance(wan_obj, dict):
+                        continue
+                    uplink_ifname = wan_obj.get('uplink_ifname')
+                    if uplink_ifname:
+                        device_wan_map[group] = uplink_ifname
+                if device_wan_map:
+                    logger.info("Resolved WAN interfaces from gateway device: %s",
+                                device_wan_map)
+                break  # Only need the first gateway
+        except Exception as e:
+            logger.debug("Could not resolve WAN from stat/device: %s", e)
+
         wan_interfaces = []
         for net in networks_raw:
             if not net.get('enabled', True):
@@ -334,13 +357,18 @@ class UniFiAPI:
             logger.debug("WAN entry: name=%s, wan_type=%s, wan_networkgroup=%s",
                          name, wan_type, networkgroup)
 
-            physical = _WAN_PHYSICAL_MAP.get(
-                (wan_type_lower, networkgroup),
-                'eth4' if networkgroup == 'WAN' else 'eth5'
-            )
-            if (wan_type_lower, networkgroup) not in _WAN_PHYSICAL_MAP:
-                logger.warning("Unmapped WAN type: wan_type=%r, wan_networkgroup=%s -> defaulting to %s",
-                               wan_type, networkgroup, physical)
+            # Prefer gateway device detection over static map
+            physical = device_wan_map.get(networkgroup)
+            detected_from = 'device'
+            if not physical:
+                physical = _WAN_PHYSICAL_MAP.get(
+                    (wan_type_lower, networkgroup),
+                    'eth4' if networkgroup == 'WAN' else 'eth5'
+                )
+                detected_from = 'map'
+                if (wan_type_lower, networkgroup) not in _WAN_PHYSICAL_MAP:
+                    logger.warning("Unmapped WAN type: wan_type=%r, wan_networkgroup=%s "
+                                   "-> defaulting to %s", wan_type, networkgroup, physical)
 
             health_sub = wan_health.get(networkgroup, {})
             net_wan_ip = health_sub.get('wan_ip')
@@ -351,6 +379,7 @@ class UniFiAPI:
                 'networkgroup': networkgroup,
                 'physical_interface': physical,
                 'active': bool(net_wan_ip),
+                'detected_from': detected_from,
             })
 
         # ── Network segments from Integration API (/networks) ──

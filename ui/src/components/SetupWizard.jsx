@@ -23,6 +23,9 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
 
   // Full network config from UniFi API (for API-path steps 2-3)
   const [apiNetConfig, setApiNetConfig] = useState(null)
+  // Tracks in-progress WAN interface edits (keyed by wanIdx) so the input
+  // stays responsive while the user is typing/deleting characters.
+  const [editingWan, setEditingWan] = useState({})
 
   // Pre-populate with current config in reconfigure mode
   useEffect(() => {
@@ -111,13 +114,21 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
     setStep(2)
   }
 
-  // API path: update a WAN physical interface name
+  // API path: track live keystrokes in editingWan; commit on blur/Enter
   const handleApiWanInterfaceChange = (idx, value) => {
     if (idx < 0 || idx >= wanInterfaces.length) return
+    setEditingWan(prev => ({ ...prev, [idx]: value }))
+  }
+
+  const commitWanEdit = (idx) => {
+    if (idx < 0 || idx >= wanInterfaces.length) return
+    const raw = editingWan[idx]
+    if (raw === undefined) return // no pending edit
+    const newIface = raw.trim()
+    setEditingWan(prev => { const n = { ...prev }; delete n[idx]; return n })
+    if (!newIface) return // empty → revert to current value
     const oldIface = wanInterfaces[idx]
-    const newIface = value.trim()
-    if (!newIface || newIface === oldIface) return
-    // Update wanInterfaces list
+    if (newIface === oldIface) return
     const updated = [...wanInterfaces]
     updated[idx] = newIface
     setWanInterfaces(updated)
@@ -125,6 +136,22 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
     const newLabels = { ...interfaceLabels }
     if (newLabels[oldIface]) {
       newLabels[newIface] = newLabels[oldIface]
+      delete newLabels[oldIface]
+    }
+    setInterfaceLabels(newLabels)
+  }
+
+  const resetWanInterface = (idx, originalIface) => {
+    if (idx < 0 || idx >= wanInterfaces.length) return
+    setEditingWan(prev => { const n = { ...prev }; delete n[idx]; return n })
+    const oldIface = wanInterfaces[idx]
+    if (oldIface === originalIface) return
+    const updated = [...wanInterfaces]
+    updated[idx] = originalIface
+    setWanInterfaces(updated)
+    const newLabels = { ...interfaceLabels }
+    if (newLabels[oldIface]) {
+      newLabels[originalIface] = newLabels[oldIface]
       delete newLabels[oldIface]
     }
     setInterfaceLabels(newLabels)
@@ -228,7 +255,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                     <h2 className="text-xl font-semibold text-gray-200 mb-2">WAN Configuration</h2>
                     <p className="text-sm text-gray-300">
                       These WAN interfaces were auto-detected from your UniFi Controller.
-                      Verify the physical interface names are correct.
+                      Verify the physical interface names are correct for your hardware.
                     </p>
                   </div>
 
@@ -236,54 +263,96 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                     Auto-detected from UniFi Controller
                   </div>
 
+                  {(apiNetConfig?.wan_interfaces || []).some(w => (w.active || !!w.wan_ip) && w.detected_from !== 'device') && (
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+                      <p className="text-xs text-yellow-400 font-medium mb-1.5">
+                        Could not detect the physical interface from your gateway &mdash; using a best guess.
+                        Verify it matches your hardware:
+                      </p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-gray-400 font-mono" style={{ maxWidth: '16rem' }}>
+                        <span>UDR (PPPoE):</span><span>ppp0</span>
+                        <span>UDR (DHCP):</span><span>eth3</span>
+                        <span>UDM / UDM-SE:</span><span>eth8</span>
+                        <span>UDM-Pro:</span><span>eth8 or eth9</span>
+                        <span>USG:</span><span>eth0</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-3">
-                    {(apiNetConfig?.wan_interfaces || []).map((w) => {
-                      const isActive = w.active || !!w.wan_ip
-                      const wanIdx = wanInterfaces.indexOf(w.physical_interface)
-                      return (
-                        <div key={w.physical_interface} className="p-4 rounded-lg border border-gray-700">
-                          <div className="flex items-center gap-3 mb-3">
-                            <input
-                              type="checkbox"
-                              readOnly
-                              checked={isActive}
-                              disabled={!isActive}
-                              className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 pointer-events-none"
-                            />
-                            <span className="text-sm font-semibold text-gray-200">{w.name.replace(/\s*\(WAN\d*\)\s*$/i, '')}</span>
-                            {interfaceLabels[w.physical_interface] && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
-                                {interfaceLabels[w.physical_interface]}
-                              </span>
-                            )}
-                            {w.wan_ip && (
-                              <span className="text-xs font-mono text-gray-400">{w.wan_ip}</span>
-                            )}
-                            {!isActive && (
-                              <span className="text-xs text-yellow-400/80">(inactive)</span>
-                            )}
+                    {(() => {
+                      let activeIdx = 0
+                      return (apiNetConfig?.wan_interfaces || []).map((w) => {
+                        const isActive = w.active || !!w.wan_ip
+                        const wanIdx = isActive ? activeIdx++ : -1
+                        const currentIface = wanIdx >= 0 ? wanInterfaces[wanIdx] : w.physical_interface
+                        const isGuess = w.detected_from !== 'device'
+                        return (
+                          <div key={w.networkgroup || w.name} className="p-4 rounded-lg border border-gray-700">
+                            <div className="flex items-center gap-3 mb-3">
+                              <input
+                                type="checkbox"
+                                readOnly
+                                checked={isActive}
+                                disabled={!isActive}
+                                className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 pointer-events-none"
+                              />
+                              <span className="text-sm font-semibold text-gray-200">{w.name.replace(/\s*\(WAN\d*\)\s*$/i, '')}</span>
+                              {interfaceLabels[currentIface] && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
+                                  {interfaceLabels[currentIface]}
+                                </span>
+                              )}
+                              {w.wan_ip && (
+                                <span className="text-xs font-mono text-gray-400">{w.wan_ip}</span>
+                              )}
+                              {!isActive && (
+                                <span className="text-xs text-yellow-400/80">Inactive</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 ml-7 text-xs text-gray-400">
+                              <span>Type: {w.type || 'unknown'}</span>
+                              {isActive && (
+                                <>
+                                  <span>|</span>
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-gray-400">Interface:</label>
+                                    <input
+                                      type="text"
+                                      value={editingWan[wanIdx] !== undefined ? editingWan[wanIdx] : currentIface}
+                                      onChange={e => handleApiWanInterfaceChange(wanIdx, e.target.value)}
+                                      onBlur={() => commitWanEdit(wanIdx)}
+                                      onKeyDown={e => { if (e.key === 'Enter') { e.target.blur() } }}
+                                      className={`w-24 px-2 py-1 rounded bg-gray-900 border font-mono text-xs text-gray-200 focus:border-blue-500 focus:outline-none ${
+                                        isGuess && currentIface === w.physical_interface ? 'border-yellow-500/50' : 'border-gray-600'
+                                      }`}
+                                    />
+                                    {currentIface !== w.physical_interface && (
+                                      <button
+                                        type="button"
+                                        onClick={() => resetWanInterface(wanIdx, w.physical_interface)}
+                                        className="text-gray-500 hover:text-gray-300 transition-colors"
+                                        title={`Reset to ${w.physical_interface}`}
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                          <path fillRule="evenodd" d="M7.793 2.232a.75.75 0 01-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 010 10.75H10.75a.75.75 0 010-1.5h2.875a3.875 3.875 0 000-7.75H3.622l4.146 3.957a.75.75 0 01-1.036 1.085l-5.5-5.25a.75.75 0 010-1.085l5.5-5.25a.75.75 0 011.06.025z" clipRule="evenodd" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                    {currentIface !== w.physical_interface
+                                      ? <span className="text-gray-500">(user edited)</span>
+                                      : isGuess
+                                        ? <span className="text-yellow-400/80">(best guess &mdash; edit if needed)</span>
+                                        : <span className="text-emerald-400/80">Verified from gateway</span>
+                                    }
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-4 ml-7 text-xs text-gray-400">
-                            <span>Type: {w.type || 'unknown'}</span>
-                            {isActive && (
-                              <>
-                                <span>|</span>
-                                <div className="flex items-center gap-2">
-                                  <label className="text-gray-400">Interface:</label>
-                                  <input
-                                    type="text"
-                                    value={wanIdx >= 0 ? wanInterfaces[wanIdx] : w.physical_interface}
-                                    onChange={e => handleApiWanInterfaceChange(wanIdx, e.target.value)}
-                                    className="w-24 px-2 py-1 rounded bg-gray-900 border border-gray-600 font-mono text-xs text-gray-200 focus:border-blue-500 focus:outline-none"
-                                  />
-                                  <span className="text-gray-500">(auto-detected)</span>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })
+                    })()}
                   </div>
 
                   {(!apiNetConfig?.wan_interfaces?.length) && (

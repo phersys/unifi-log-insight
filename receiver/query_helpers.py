@@ -88,8 +88,9 @@ def build_log_query(
         params.extend(actions)
 
     if rule_name:
-        conditions.append("rule_name LIKE %s")
-        params.append(f"%{rule_name}%")
+        escaped = _escape_like(rule_name)
+        conditions.append("(rule_name ILIKE %s ESCAPE '\\' OR rule_desc ILIKE %s ESCAPE '\\')")
+        params.extend([f"%{escaped}%", f"%{escaped}%"])
 
     if country:
         countries = [c.strip().upper() for c in country.split(',')]
