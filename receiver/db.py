@@ -195,6 +195,10 @@ class Database:
             END;
             $$ LANGUAGE plpgsql""",
         ]
+        # Fix function ownership BEFORE migrations so CREATE OR REPLACE
+        # succeeds on the first boot after upgrade (not just the second).
+        self._fix_function_ownership()
+
         try:
             with self.get_conn() as conn:
                 with conn.cursor() as cur:
@@ -218,6 +222,40 @@ class Database:
             logger.exception("Schema migration failed")
 
         self._backfill_tz_timestamps()
+
+    def _fix_function_ownership(self):
+        """One-time fix: transfer function ownership from postgres to unifi.
+
+        init.sql creates cleanup_old_logs() as the postgres superuser, so it's
+        owned by postgres.  The app connects as unifi and can't CREATE OR REPLACE
+        a function it doesn't own (fixes #24).  We connect as postgres via the
+        local Unix socket (pg_hba.conf: local all all trust) to run the ALTER,
+        then gate it so it only runs once.
+        """
+        if self.get_config('fn_ownership_fixed'):
+            return
+        try:
+            fix_conn = psycopg2.connect(
+                dbname='unifi_logs', user='postgres',
+                host='/var/run/postgresql',
+            )
+            try:
+                fix_conn.autocommit = True
+                with fix_conn.cursor() as cur:
+                    cur.execute(
+                        "ALTER FUNCTION cleanup_old_logs(INTEGER, INTEGER) "
+                        "OWNER TO unifi"
+                    )
+            finally:
+                fix_conn.close()
+            self.set_config('fn_ownership_fixed', True)
+            logger.info("Fixed function ownership: cleanup_old_logs → unifi")
+        except Exception:
+            logger.debug(
+                "Could not fix function ownership via superuser "
+                "(may be a fresh install where system_config doesn't exist yet)",
+                exc_info=True,
+            )
 
     def _backfill_tz_timestamps(self):
         """One-time migration: fix historical timestamps stored with wrong timezone.
