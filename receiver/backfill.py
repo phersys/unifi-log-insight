@@ -69,6 +69,9 @@ class BackfillTask:
         # Step 0b: Fix enrichment on logs that were enriched on our WAN IP
         self._fix_wan_ip_enrichment()
 
+        # Step 0c: Fix logs contaminated by WAN IP abuse data (issue #30)
+        self._fix_abuse_hostname_mixing()
+
         # Step 1: Patch NULL service_name rows for historical firewall logs
         patched_services = self._patch_service_names()
 
@@ -283,6 +286,133 @@ class BackfillTask:
 
         set_config(self.db, 'enrichment_wan_fix_pending', False)
         logger.info("Enrichment WAN fix complete: %d logs re-enriched", total_fixed)
+        return total_fixed
+
+    def _fix_abuse_hostname_mixing(self) -> int:
+        """One-time fix: repair logs contaminated by WAN IP abuse data (issue #30).
+
+        The direction-blind UPDATE in manual enrichment wrote WAN IP's abuse
+        data (hostname, usage_type, threat_score) onto attacker logs where the
+        WAN IP was dst. This migration:
+        1. Deletes WAN/gateway entries from ip_threats
+        2. Re-patches corrupted log rows from the correct src_ip's ip_threats
+        3. NULLs abuse fields for rows with no ip_threats entry
+
+        Rows with no ip_threats entry are NULLed (no data > wrong data);
+        _patch_from_cache() will re-fill when the IP is eventually enriched.
+
+        Gated by 'abuse_hostname_fix_done' config flag — runs once.
+        """
+        from psycopg2.extras import RealDictCursor
+        from db import get_config, set_config
+
+        if get_config(self.db, 'abuse_hostname_fix_done', False):
+            return 0
+
+        wan_ips = get_config(self.db, 'wan_ips') or []
+        if not wan_ips:
+            # No WAN IPs known yet — skip and retry next cycle
+            return 0
+
+        gateway_ips = get_config(self.db, 'gateway_ips') or []
+        all_excluded = wan_ips + gateway_ips
+
+        logger.info("Starting abuse hostname fix (WAN IPs: %s, gateway IPs: %s)...",
+                     wan_ips, gateway_ips)
+
+        # Step A: Delete WAN/gateway entries from ip_threats
+        with self.db.get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT host(ip) as ip_text, abuse_hostnames, abuse_usage_type "
+                    "FROM ip_threats WHERE ip = ANY(%s::inet[])",
+                    [all_excluded],
+                )
+                wan_entries = cur.fetchall()
+                if wan_entries:
+                    logger.info(
+                        "Removing %d WAN/gateway entries from ip_threats: %s",
+                        len(wan_entries),
+                        [e['ip_text'] for e in wan_entries],
+                    )
+                    cur.execute(
+                        "DELETE FROM ip_threats WHERE ip = ANY(%s::inet[])",
+                        [all_excluded],
+                    )
+
+        # Step B: Repair corrupted log rows using ID-cursor batching
+        total_fixed = 0
+        batch_size = 500
+        last_id = 0
+
+        while True:
+            with self.db.get_conn() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT id, host(src_ip) as src_ip
+                        FROM logs
+                        WHERE dst_ip = ANY(%s::inet[])
+                          AND direction IN ('inbound', 'in')
+                          AND src_ip != ALL(%s::inet[])
+                          AND (abuse_hostnames IS NOT NULL
+                               OR abuse_usage_type IS NOT NULL)
+                          AND id > %s
+                        ORDER BY id
+                        LIMIT %s
+                    """, [wan_ips, all_excluded, last_id, batch_size])
+                    rows = cur.fetchall()
+
+            if not rows:
+                break
+
+            # Batch-fetch ip_threats for all src IPs in this batch
+            src_ips = list({row['src_ip'] for row in rows})
+            with self.db.get_conn() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT host(ip) as ip_text, threat_score, threat_categories,
+                               abuse_usage_type, abuse_hostnames, abuse_total_reports,
+                               abuse_last_reported, abuse_is_whitelisted, abuse_is_tor
+                        FROM ip_threats WHERE ip = ANY(%s::inet[])
+                    """, [src_ips])
+                    threats_by_ip = {r['ip_text']: r for r in cur.fetchall()}
+
+            # Build update tuples: correct data from ip_threats, or NULL everything
+            updates = []
+            for row in rows:
+                last_id = row['id']
+                threat = threats_by_ip.get(row['src_ip'])
+                if threat:
+                    updates.append((
+                        threat['threat_score'], threat['threat_categories'],
+                        threat['abuse_usage_type'], threat['abuse_hostnames'],
+                        threat['abuse_total_reports'], threat['abuse_last_reported'],
+                        threat['abuse_is_whitelisted'], threat['abuse_is_tor'],
+                        row['id'],
+                    ))
+                else:
+                    updates.append((
+                        None, None, None, None, None, None, None, None,
+                        row['id'],
+                    ))
+
+            if updates:
+                with self.db.get_conn() as conn:
+                    with conn.cursor() as cur:
+                        extras.execute_batch(cur, """
+                            UPDATE logs SET
+                                threat_score = %s, threat_categories = %s,
+                                abuse_usage_type = %s, abuse_hostnames = %s,
+                                abuse_total_reports = %s, abuse_last_reported = %s,
+                                abuse_is_whitelisted = %s, abuse_is_tor = %s
+                            WHERE id = %s
+                        """, updates, page_size=500)
+
+            total_fixed += len(rows)
+            logger.debug("Abuse hostname fix progress: %d logs processed", total_fixed)
+
+        set_config(self.db, 'abuse_hostname_fix_done', True)
+        logger.info("Abuse hostname fix complete: %d logs repaired", total_fixed)
         return total_fixed
 
     def _patch_from_cache(self) -> int:

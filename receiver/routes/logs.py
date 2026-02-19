@@ -147,16 +147,47 @@ def get_log(log_id: int):
             # Exclude WAN IPs from joins so we only pick up remote party's data.
             cur.execute("""
                 SELECT l.*,
-                    COALESCE(l.abuse_usage_type, t1.abuse_usage_type, t2.abuse_usage_type) as abuse_usage_type,
-                    COALESCE(l.abuse_hostnames, t1.abuse_hostnames, t2.abuse_hostnames) as abuse_hostnames,
-                    COALESCE(l.abuse_total_reports, t1.abuse_total_reports, t2.abuse_total_reports) as abuse_total_reports,
-                    COALESCE(l.abuse_last_reported, t1.abuse_last_reported, t2.abuse_last_reported) as abuse_last_reported,
-                    COALESCE(l.abuse_is_whitelisted, t1.abuse_is_whitelisted, t2.abuse_is_whitelisted) as abuse_is_whitelisted,
-                    COALESCE(l.abuse_is_tor, t1.abuse_is_tor, t2.abuse_is_tor) as abuse_is_tor,
+                    COALESCE(l.abuse_usage_type,
+                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_usage_type
+                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_usage_type
+                             WHEN t1.ip IS NOT NULL THEN t1.abuse_usage_type
+                             ELSE t2.abuse_usage_type END) as abuse_usage_type,
+                    COALESCE(l.abuse_hostnames,
+                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_hostnames
+                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_hostnames
+                             WHEN t1.ip IS NOT NULL THEN t1.abuse_hostnames
+                             ELSE t2.abuse_hostnames END) as abuse_hostnames,
+                    COALESCE(l.abuse_total_reports,
+                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_total_reports
+                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_total_reports
+                             WHEN t1.ip IS NOT NULL THEN t1.abuse_total_reports
+                             ELSE t2.abuse_total_reports END) as abuse_total_reports,
+                    COALESCE(l.abuse_last_reported,
+                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_last_reported
+                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_last_reported
+                             WHEN t1.ip IS NOT NULL THEN t1.abuse_last_reported
+                             ELSE t2.abuse_last_reported END) as abuse_last_reported,
+                    COALESCE(l.abuse_is_whitelisted,
+                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_is_whitelisted
+                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_is_whitelisted
+                             WHEN t1.ip IS NOT NULL THEN t1.abuse_is_whitelisted
+                             ELSE t2.abuse_is_whitelisted END) as abuse_is_whitelisted,
+                    COALESCE(l.abuse_is_tor,
+                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_is_tor
+                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_is_tor
+                             WHEN t1.ip IS NOT NULL THEN t1.abuse_is_tor
+                             ELSE t2.abuse_is_tor END) as abuse_is_tor,
                     COALESCE(
                         CASE WHEN array_length(l.threat_categories, 1) > 0 THEN l.threat_categories END,
-                        CASE WHEN array_length(t1.threat_categories, 1) > 0 THEN t1.threat_categories END,
-                        CASE WHEN array_length(t2.threat_categories, 1) > 0 THEN t2.threat_categories END
+                        CASE WHEN l.direction IN ('inbound', 'in') THEN
+                                 CASE WHEN array_length(t1.threat_categories, 1) > 0 THEN t1.threat_categories END
+                             WHEN l.direction IN ('outbound', 'out') THEN
+                                 CASE WHEN array_length(t2.threat_categories, 1) > 0 THEN t2.threat_categories END
+                             WHEN t1.ip IS NOT NULL THEN
+                                 CASE WHEN array_length(t1.threat_categories, 1) > 0 THEN t1.threat_categories END
+                             ELSE
+                                 CASE WHEN array_length(t2.threat_categories, 1) > 0 THEN t2.threat_categories END
+                        END
                     ) as threat_categories,
                     COALESCE(l.src_device_name,
                         c1.device_name, c1.hostname, c1.oui,

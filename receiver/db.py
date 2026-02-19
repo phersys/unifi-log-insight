@@ -5,6 +5,7 @@ Handles PostgreSQL connection pooling, log insertion, and retention cleanup.
 """
 
 import base64
+import ipaddress
 import os
 import json
 import logging
@@ -144,6 +145,10 @@ class Database:
             # One-time flag: re-enrich logs that were enriched on WAN IP instead of remote IP
             """INSERT INTO system_config (key, value, updated_at)
                VALUES ('enrichment_wan_fix_pending', 'true', NOW())
+               ON CONFLICT (key) DO NOTHING""",
+            # One-time flag: repair logs contaminated by WAN IP abuse data (issue #30)
+            """INSERT INTO system_config (key, value, updated_at)
+               VALUES ('abuse_hostname_fix_done', 'false', NOW())
                ON CONFLICT (key) DO NOTHING""",
             # Phase 2: Device name columns on logs
             "ALTER TABLE logs ADD COLUMN IF NOT EXISTS src_device_name TEXT",
@@ -453,11 +458,26 @@ class Database:
 
     def upsert_threat(self, ip: str, threat_data: dict):
         """Insert or update a threat entry for an IP.
-        
+
         threat_data should contain at minimum: threat_score, threat_categories.
         May also contain: abuse_usage_type, abuse_hostnames, abuse_total_reports,
         abuse_last_reported, abuse_is_whitelisted, abuse_is_tor.
         """
+        # Defense-in-depth: never store WAN/gateway IPs as threats
+        try:
+            normalized = str(ipaddress.ip_address(ip))
+        except ValueError:
+            normalized = ip
+        excluded = set()
+        for ip_str in (self.get_config('wan_ips') or []) + (self.get_config('gateway_ips') or []):
+            try:
+                excluded.add(str(ipaddress.ip_address(ip_str)))
+            except ValueError:
+                pass
+        if normalized in excluded:
+            logger.debug("Skipping upsert_threat for excluded IP %s", ip)
+            return
+
         with self.get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -477,7 +497,7 @@ class Database:
                     "  abuse_is_tor = COALESCE(EXCLUDED.abuse_is_tor, ip_threats.abuse_is_tor), "
                     "  looked_up_at = NOW()",
                     [
-                        ip,
+                        normalized,
                         threat_data.get('threat_score', 0),
                         threat_data.get('threat_categories', []),
                         threat_data.get('abuse_usage_type'),

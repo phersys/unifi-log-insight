@@ -6,11 +6,22 @@ Uses the separate blacklist quota (5/day), NOT the check quota.
 Pre-seeds ip_threats cache so blocked IPs get instant scores without API calls.
 """
 
+import ipaddress
 import os
 import logging
 import requests
 
+from db import get_config
+
 logger = logging.getLogger('blacklist')
+
+
+def _normalize_ip(ip_str: str) -> str:
+    """Normalize an IP address string for reliable comparison."""
+    try:
+        return str(ipaddress.ip_address(ip_str))
+    except ValueError:
+        return ip_str
 
 BLACKLIST_URL = 'https://api.abuseipdb.com/api/v2/blacklist'
 
@@ -61,6 +72,23 @@ class BlacklistFetcher:
                 score = item.get('abuseConfidenceScore', 100)
                 if ip:
                     entries.append((ip, score, ['blacklist']))
+
+            # Filter out WAN/gateway IPs to prevent self-contamination
+            wan_ips_cfg = get_config(self.db, 'wan_ips') or []
+            gateway_ips_cfg = get_config(self.db, 'gateway_ips') or []
+            excluded = set()
+            for ip_str in wan_ips_cfg + gateway_ips_cfg:
+                try:
+                    excluded.add(str(ipaddress.ip_address(ip_str)))
+                except ValueError:
+                    pass
+            if excluded:
+                before = len(entries)
+                entries = [(ip, score, cats) for ip, score, cats in entries
+                           if _normalize_ip(ip) not in excluded]
+                filtered = before - len(entries)
+                if filtered:
+                    logger.info("Blacklist: filtered %d WAN/gateway IPs from import", filtered)
 
             # Bulk upsert into ip_threats
             count = self.db.bulk_upsert_threats(entries)
