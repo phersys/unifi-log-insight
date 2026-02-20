@@ -26,13 +26,14 @@ New Setup and Firewall Syslog Bulk Control
 - 🌍 **IP Enrichment** — MaxMind GeoLite2 (country, city, coordinates), ASN lookup, AbuseIPDB threat intelligence (score, 23 attack categories, usage type, Tor/whitelist detection, report counts), reverse DNS
 - 🧙 **Setup Wizard** — First-launch wizard with two paths: **UniFi API** (auto-detects WAN, VLANs, and network topology from the controller) or **Log Detection** (discovers interfaces from live traffic). Labels each interface (e.g., "IoT" instead of "br20") and saves everything — no config files to edit
 - 🔀 **Multi-WAN Support** — Select multiple WAN interfaces for failover or load-balanced setups; reconfigure anytime via the Settings gear
-- 🧭 **Smart Direction Detection** — Classifies traffic as inbound, outbound, inter-VLAN, or local with automatic WAN IP learning
+- 🧭 **Smart Direction Detection** — Classifies traffic as inbound, outbound, inter-VLAN, local, or VPN with automatic WAN IP learning
+- 🔐 **VPN Badge Detection** — Auto-detects VPN interfaces from logs and the UniFi API (`/rest/networkconf`). Supports WireGuard Server/Client, OpenVPN, IPsec Site-to-Site, L2TP, Teleport, and Site Magic. Assign badges, custom labels, and CIDRs per VPN interface via Settings
 - 🔌 **UniFi API Integration** — Optional connection to your UniFi Controller for automatic network discovery, device name resolution, and firewall management. Requires a UniFi API key (Local Admin)
 - 🛡️ **Firewall Rule Manager** — View all firewall policies in a zone matrix with bulk syslog toggle. See which rules have logging enabled and toggle them without leaving the app
 - 📛 **Device Name Resolution** — Background polling of UniFi clients and devices enriches logs with friendly device names (e.g., "SwitchBot Hub" instead of "10.10.20.205") via MAC and IP matching
 - 🔤 **DNS Ready** — Parser supports DNS query/answer logging (requires additional Unifi configuration — see [DNS Logging](#-dns-logging) below)
 - 📺 **Live UI** — Auto-refreshing log stream with expandable detail rows, intelligent pause/resume when inspecting logs
-- 🔎 **Filters** — Filter by log type, time range, action (allow/block/redirect), direction, IP address, rule name, and raw text search
+- 🔎 **Filters** — Filter by log type, time range, action (allow/block/redirect), direction, VPN badge, IP address, rule name, and raw text search
 - 📊 **Dashboard** — Traffic breakdown by type and direction, traffic-over-time chart, top blocked/allowed countries and IPs, top threat IPs (enriched with ASN, city, rDNS, decoded categories, last seen), top active internal devices, top services, top DNS queries
 - 🛡️ **AbuseIPDB Blacklist** — Daily pull of 10,000 highest-risk IPs pre-seeded into the threat cache for instant scoring without API calls (separate quota: 5 calls/day)
 - 💾 **Persistent Threat Cache** — `ip_threats` table stores AbuseIPDB results (score, categories, usage type, Tor status, report counts) for 4-day reuse, surviving container rebuilds. Three-tier lookup: in-memory → PostgreSQL → API call
@@ -258,7 +259,7 @@ graph LR
 1. **Receive** — Raw syslog UDP packets from Unifi
 2. **Parse** — Extract fields from iptables, hostapd, dhclient, and dnsmasq messages (when DNS logging is enabled)
 3. **Validate** — IP address validation rejects malformed data before DB insert
-4. **Classify** — Determine direction (inbound/outbound/inter-VLAN/local) based on interfaces and WAN IP
+4. **Classify** — Determine direction (inbound/outbound/inter-VLAN/local/VPN) based on interfaces and WAN IP
 5. **Enrich** — GeoIP country/city/coords, ASN org name, AbuseIPDB threat score + categories + detail fields (verbose mode), reverse DNS
 6. **Store** — Batched inserts into PostgreSQL with row-by-row fallback on failure
 7. **Serve** — REST API with pagination, filtering, sorting, and CSV export
@@ -366,7 +367,8 @@ The main view shows a live-updating table of parsed logs:
 - **Type filters** — Toggle firewall, DNS, DHCP, Wi-Fi, system
 - **Time range** — 1h, 6h, 24h, 7d, 30d, 60d (up to 365d based on retention setting)
 - **Action filters** — Allow, block, redirect
-- **Direction filters** — Inbound, outbound, VLAN, NAT
+- **Direction filters** — Inbound, outbound, VLAN, NAT, VPN
+- **VPN badge filter** — Filter by VPN type (WireGuard, OpenVPN, IPsec, L2TP, Teleport, Site Magic)
 - **Interface filter** — Multi-select by interface name or label (e.g., "IoT", "br20")
 - **Service filter** — Filter by detected service (HTTP, DNS, SSH, etc.)
 - **Text search** — Filter by IP, rule name, or raw log content
@@ -379,7 +381,7 @@ The stream auto-pauses when a row is expanded and shows a count of new logs rece
 
 Aggregated views with configurable time range (1h to 365d, based on retention setting):
 - Total logs, blocked count, high-threat count, allowed count
-- Traffic direction breakdown (inbound, outbound, VLAN, NAT)
+- Traffic direction breakdown (inbound, outbound, VLAN, NAT, VPN)
 - Traffic-over-time area chart and traffic-by-action stacked chart (allowed/blocked/redirect)
 - Top blocked countries and IPs (external and internal, with device names from UniFi)
 - Top threat IPs — enriched with ASN, city, rDNS, decoded attack categories, last seen
@@ -415,8 +417,16 @@ Aggregated views with configurable time range (1h to 365d, based on retention se
 | `GET /api/unifi/status` | UniFi polling status |
 | `GET /api/config/export` | Export all settings as JSON |
 | `POST /api/config/import` | Import settings from JSON backup |
+| `POST /api/config/vpn-networks` | Save VPN network configuration (badges, labels, CIDRs) |
 | `GET /api/config/retention` | Current retention configuration |
 | `POST /api/config/retention` | Update retention settings |
+| `POST /api/config/retention/cleanup` | Run retention cleanup immediately |
+| `GET /api/setup/status` | Setup wizard completion status |
+| `GET /api/setup/unifi-network-config` | UniFi network discovery config |
+| `GET /api/abuseipdb/status` | AbuseIPDB threat cache and rate limit status |
+| `POST /api/unifi/backfill-device-names` | Backfill device names from UniFi into existing logs |
+| `GET /api/unifi/gateway-image` | Gateway model and image info |
+| `POST /api/settings/unifi/dismiss-upgrade` | Dismiss upgrade notification banner |
 
 ---
 
