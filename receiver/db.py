@@ -12,6 +12,7 @@ import logging
 from contextlib import contextmanager
 
 import psycopg2
+import psycopg2.errors
 from psycopg2 import pool, extras
 from psycopg2.extras import Json
 
@@ -199,16 +200,67 @@ class Database:
             END;
             $$ LANGUAGE plpgsql""",
         ]
+        # Fix function ownership BEFORE migrations so CREATE OR REPLACE
+        # succeeds on the first boot after upgrade (not just the second).
+        self._fix_function_ownership()
+
         try:
             with self.get_conn() as conn:
                 with conn.cursor() as cur:
-                    for sql in migrations:
-                        cur.execute(sql)
+                    for i, sql in enumerate(migrations):
+                        try:
+                            cur.execute(f"SAVEPOINT sp_{i}")
+                            cur.execute(sql)
+                            cur.execute(f"RELEASE SAVEPOINT sp_{i}")
+                        except psycopg2.errors.InsufficientPrivilege:
+                            cur.execute(f"ROLLBACK TO SAVEPOINT sp_{i}")
+                            logger.warning(
+                                "Migration skipped (insufficient privilege): %.80s... "
+                                "Check object ownership and grant privileges to the app DB user.",
+                                sql,
+                            )
+                        except Exception:
+                            cur.execute(f"ROLLBACK TO SAVEPOINT sp_{i}")
+                            raise
             logger.info("Schema migrations applied.")
         except Exception:
             logger.exception("Schema migration failed")
 
         self._backfill_tz_timestamps()
+
+    def _fix_function_ownership(self):
+        """One-time fix: transfer function ownership from postgres to unifi.
+
+        init.sql creates cleanup_old_logs() as the postgres superuser, so it's
+        owned by postgres.  The app connects as unifi and can't CREATE OR REPLACE
+        a function it doesn't own (fixes #24).  We connect as postgres via the
+        local Unix socket (pg_hba.conf: local all all trust) to run the ALTER,
+        then gate it so it only runs once.
+        """
+        try:
+            if self.get_config('fn_ownership_fixed'):
+                return
+            fix_conn = psycopg2.connect(
+                dbname='unifi_logs', user='postgres',
+                host='/var/run/postgresql',
+            )
+            try:
+                fix_conn.autocommit = True
+                with fix_conn.cursor() as cur:
+                    cur.execute(
+                        "ALTER FUNCTION cleanup_old_logs(INTEGER, INTEGER) "
+                        "OWNER TO unifi"
+                    )
+            finally:
+                fix_conn.close()
+            self.set_config('fn_ownership_fixed', True)
+            logger.info("Fixed function ownership: cleanup_old_logs → unifi")
+        except Exception:
+            logger.debug(
+                "Could not fix function ownership via superuser "
+                "(may be a fresh install where system_config doesn't exist yet)",
+                exc_info=True,
+            )
 
     def _backfill_tz_timestamps(self):
         """One-time migration: fix historical timestamps stored with wrong timezone.
@@ -749,10 +801,14 @@ class Database:
         return detected
 
     def get_wan_ip_candidates(self) -> list[dict]:
-        """Return all non-bridge firewall interfaces with their WAN IPs.
+        """Return non-bridge, non-VPN firewall interfaces with their WAN IPs.
 
         Used by the setup wizard to discover candidate WAN interfaces.
         """
+        from parsers import VPN_INTERFACE_PREFIXES
+        vpn_excludes = " ".join(
+            f"AND interface_in NOT LIKE '{pfx}%%'" for pfx in VPN_INTERFACE_PREFIXES
+        )
         with self.get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(f"""
@@ -766,6 +822,7 @@ class Database:
                     WHERE log_type = 'firewall'
                       AND interface_in IS NOT NULL
                       AND interface_in NOT LIKE 'br%%'
+                      {vpn_excludes}
                     GROUP BY interface_in
                     ORDER BY event_count DESC
                 """)
