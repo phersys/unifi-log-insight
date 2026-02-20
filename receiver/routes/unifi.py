@@ -30,14 +30,30 @@ def update_unifi_settings(body: dict):
         set_config(enricher_db, 'unifi_enabled', body['enabled'])
     if 'host' in body:
         set_config(enricher_db, 'unifi_host', body['host'])
+    if 'controller_type' in body:
+        set_config(enricher_db, 'unifi_controller_type', body['controller_type'])
     if 'api_key' in body:
         key_val = body['api_key']
         if key_val == '':
             set_config(enricher_db, 'unifi_api_key', '')
         elif key_val is not None:
             set_config(enricher_db, 'unifi_api_key', encrypt_api_key(key_val))
+    if 'username' in body:
+        val = body['username']
+        if val == '':
+            set_config(enricher_db, 'unifi_username', '')
+        elif val is not None:
+            set_config(enricher_db, 'unifi_username', encrypt_api_key(val))
+    if 'password' in body:
+        val = body['password']
+        if val == '':
+            set_config(enricher_db, 'unifi_password', '')
+        elif val is not None:
+            set_config(enricher_db, 'unifi_password', encrypt_api_key(val))
     if 'site' in body:
         set_config(enricher_db, 'unifi_site', body['site'])
+        # Clear cached site_id — self-hosted must re-resolve on next request
+        set_config(enricher_db, 'unifi_site_id', None)
     if 'verify_ssl' in body:
         set_config(enricher_db, 'unifi_verify_ssl', body['verify_ssl'])
     if 'poll_interval' in body:
@@ -57,45 +73,91 @@ def test_unifi_connection(body: dict):
     host = body.get('host', '').strip()
     site = body.get('site', 'default').strip()
     verify_ssl = body.get('verify_ssl', True)
+    controller_type = body.get('controller_type', 'unifi_os')
     use_env_key = body.get('use_env_key', False)
     use_saved_key = body.get('use_saved_key', False)
+    use_saved_credentials = body.get('use_saved_credentials', False)
 
-    if use_env_key:
-        api_key = os.environ.get('UNIFI_API_KEY', '')
-    elif use_saved_key:
-        encrypted = get_config(enricher_db, 'unifi_api_key', '')
-        if not encrypted:
-            api_key = ''
-        else:
+    if controller_type == 'self_hosted':
+        # Self-hosted: cookie-based auth with username/password
+        if use_saved_credentials:
+            encrypted_user = get_config(enricher_db, 'unifi_username', '')
+            encrypted_pass = get_config(enricher_db, 'unifi_password', '')
+            if not encrypted_user or not encrypted_pass:
+                raise HTTPException(status_code=400, detail="No saved credentials found. Please enter username and password.")
             try:
-                api_key = decrypt_api_key(encrypted)
+                username = decrypt_api_key(encrypted_user)
+                password = decrypt_api_key(encrypted_pass)
             except Exception:
-                logger.warning("Failed to decrypt saved API key — POSTGRES_PASSWORD may have changed")
                 raise HTTPException(
                     status_code=400,
-                    detail="Saved API key could not be decrypted. Please re-enter your API key.",
+                    detail="Saved credentials could not be decrypted. Please re-enter your credentials.",
                 ) from None
+        else:
+            username = body.get('username', '').strip()
+            password = body.get('password', '')
+
+        if not host or not username or not password:
+            raise HTTPException(status_code=400, detail="host, username, and password are required")
+
+        result = unifi_api.test_connection(
+            host, site, verify_ssl, controller_type='self_hosted',
+            username=username, password=password)
+
+        if result.get('success'):
+            set_config(enricher_db, 'unifi_host', host)
+            set_config(enricher_db, 'unifi_controller_type', 'self_hosted')
+            if not use_saved_credentials:
+                set_config(enricher_db, 'unifi_username', encrypt_api_key(username))
+                set_config(enricher_db, 'unifi_password', encrypt_api_key(password))
+            if result.get('site_id'):
+                set_config(enricher_db, 'unifi_site_id', result['site_id'])
+            set_config(enricher_db, 'unifi_site', site)
+            set_config(enricher_db, 'unifi_verify_ssl', verify_ssl)
+            set_config(enricher_db, 'unifi_controller_name', result.get('controller_name', ''))
+            set_config(enricher_db, 'unifi_controller_version', result.get('version', ''))
+            set_config(enricher_db, 'unifi_enabled', True)
+            unifi_api.reload_config()
+            signal_receiver()
+
     else:
-        api_key = body.get('api_key', '').strip()
+        # UniFi OS: API key auth
+        if use_env_key:
+            api_key = os.environ.get('UNIFI_API_KEY', '')
+        elif use_saved_key:
+            encrypted = get_config(enricher_db, 'unifi_api_key', '')
+            if not encrypted:
+                api_key = ''
+            else:
+                try:
+                    api_key = decrypt_api_key(encrypted)
+                except Exception:
+                    logger.warning("Failed to decrypt saved API key — POSTGRES_PASSWORD may have changed")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Saved API key could not be decrypted. Please re-enter your API key.",
+                    ) from None
+        else:
+            api_key = body.get('api_key', '').strip()
 
-    if not host or not api_key:
-        raise HTTPException(status_code=400, detail="host and api_key are required")
+        if not host or not api_key:
+            raise HTTPException(status_code=400, detail="host and api_key are required")
 
-    result = unifi_api.test_connection(host, api_key, site, verify_ssl)
+        result = unifi_api.test_connection(
+            host, site, verify_ssl, controller_type='unifi_os', api_key=api_key)
 
-    if result.get('success'):
-        # Save to DB on successful test
-        set_config(enricher_db, 'unifi_host', host)
-        if not use_env_key and not use_saved_key:
-            set_config(enricher_db, 'unifi_api_key', encrypt_api_key(api_key))
-        set_config(enricher_db, 'unifi_site', site)
-        set_config(enricher_db, 'unifi_verify_ssl', verify_ssl)
-        set_config(enricher_db, 'unifi_controller_name', result.get('controller_name', ''))
-        set_config(enricher_db, 'unifi_controller_version', result.get('version', ''))
-        # Enable the API so wizard step 4 (firewall rules) can use it
-        set_config(enricher_db, 'unifi_enabled', True)
-        unifi_api.reload_config()
-        signal_receiver()
+        if result.get('success'):
+            set_config(enricher_db, 'unifi_host', host)
+            set_config(enricher_db, 'unifi_controller_type', 'unifi_os')
+            if not use_env_key and not use_saved_key:
+                set_config(enricher_db, 'unifi_api_key', encrypt_api_key(api_key))
+            set_config(enricher_db, 'unifi_site', site)
+            set_config(enricher_db, 'unifi_verify_ssl', verify_ssl)
+            set_config(enricher_db, 'unifi_controller_name', result.get('controller_name', ''))
+            set_config(enricher_db, 'unifi_controller_version', result.get('version', ''))
+            set_config(enricher_db, 'unifi_enabled', True)
+            unifi_api.reload_config()
+            signal_receiver()
 
     return result
 
@@ -142,7 +204,8 @@ def get_firewall_policies():
     if not unifi_api.enabled:
         raise HTTPException(status_code=400, detail="UniFi API not configured")
     if not unifi_api.features.get('firewall_management', True):
-        raise HTTPException(status_code=400, detail="Firewall management is disabled")
+        raise HTTPException(status_code=400,
+            detail="Firewall management requires a UniFi OS gateway (not available on self-hosted controllers)")
     try:
         return unifi_api.get_firewall_data()
     except Exception as e:
@@ -155,6 +218,9 @@ def patch_firewall_policy(policy_id: str, body: dict):
     """Update a single policy's loggingEnabled."""
     if not unifi_api.enabled:
         raise HTTPException(status_code=400, detail="UniFi API not configured")
+    if not unifi_api.features.get('firewall_management', True):
+        raise HTTPException(status_code=400,
+            detail="Firewall management requires a UniFi OS gateway (not available on self-hosted controllers)")
 
     # Reject DERIVED policies
     origin = body.get('origin', '')
@@ -191,6 +257,9 @@ def bulk_update_logging(body: dict):
     """Batch-update loggingEnabled for multiple policies."""
     if not unifi_api.enabled:
         raise HTTPException(status_code=400, detail="UniFi API not configured")
+    if not unifi_api.features.get('firewall_management', True):
+        raise HTTPException(status_code=400,
+            detail="Firewall management requires a UniFi OS gateway (not available on self-hosted controllers)")
 
     policies = body.get('policies', [])
     if not policies:

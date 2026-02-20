@@ -49,6 +49,12 @@ class UniFiAPI:
         self.verify_ssl = True
         self.enabled = False
         self.features = {}
+        # Self-hosted controller state
+        self._controller_type = 'unifi_os'  # 'unifi_os' | 'self_hosted'
+        self._username = ''
+        self._password = ''
+        self._csrf_token = None
+        self._site_id = None  # resolved site _id for self-hosted
         # Phase 2: polling state
         self._poll_thread = None
         self._poll_stop = threading.Event()
@@ -96,6 +102,17 @@ class UniFiAPI:
             'network_config': True, 'firewall_management': True,
         })
 
+        # Self-hosted controller config (DB only — no env vars)
+        self._controller_type = self._db.get_config('unifi_controller_type', 'unifi_os')
+        self._username = self._decrypt_db_credential('unifi_username')
+        self._password = self._decrypt_db_credential('unifi_password')
+        self._site_id = self._db.get_config('unifi_site_id', None)
+
+        # Force-disable firewall management for self-hosted (integration API not available)
+        if self._controller_type == 'self_hosted':
+            self.features = dict(self.features)
+            self.features['firewall_management'] = False
+
         # Master toggle AND credentials must both be present
         unifi_enabled_env = os.environ.get('UNIFI_ENABLED', '').lower()
         if unifi_enabled_env in ('true', '1', 'yes'):
@@ -105,7 +122,10 @@ class UniFiAPI:
         else:
             unifi_enabled = self._db.get_config('unifi_enabled', False)
 
-        self.enabled = bool(unifi_enabled) and bool(self.host and self.api_key)
+        has_credentials = (bool(self._username and self._password)
+                          if self._controller_type == 'self_hosted'
+                          else bool(self.api_key))
+        self.enabled = bool(unifi_enabled) and bool(self.host) and has_credentials
 
         # Auto-enable when both env vars are set
         if (not unifi_enabled and self.host and self.api_key
@@ -128,11 +148,23 @@ class UniFiAPI:
             logger.warning("Failed to decrypt saved API key — POSTGRES_PASSWORD may have changed")
             return ''
 
+    def _decrypt_db_credential(self, config_key):
+        """Read and decrypt a credential from system_config."""
+        encrypted = self._db.get_config(config_key, '')
+        if not encrypted:
+            return ''
+        try:
+            return decrypt_api_key(encrypted)
+        except Exception:
+            logger.warning("Failed to decrypt %s — POSTGRES_PASSWORD may have changed", config_key)
+            return ''
+
     def reload_config(self):
         """Re-read settings, invalidate session + site UUID, restart polling if needed."""
         was_polling = self._poll_thread is not None and self._poll_thread.is_alive()
         self._session = None
         self._site_uuid = None
+        self._csrf_token = None
         self._resolve_config()
         logger.info("UniFi API config reloaded (enabled=%s, host=%s)", self.enabled, self.host or '(none)')
         # Restart polling if it was running (or start it if newly enabled)
@@ -161,9 +193,13 @@ class UniFiAPI:
     def _get_session(self):
         """Lazily create and configure requests.Session."""
         if self._session is None:
-            self._session = requests.Session()
-            self._session.headers['X-API-KEY'] = self.api_key
-            self._session.verify = self.verify_ssl
+            if self._controller_type == 'self_hosted':
+                self._session = self._login_session(
+                    self.host, self._username, self._password, self.verify_ssl)
+            else:
+                self._session = requests.Session()
+                self._session.headers['X-API-KEY'] = self.api_key
+                self._session.verify = self.verify_ssl
         return self._session
 
     def _make_session(self, api_key: str, verify_ssl: bool):
@@ -173,15 +209,65 @@ class UniFiAPI:
         s.verify = verify_ssl
         return s
 
+    # ── URL + Auth Helpers ─────────────────────────────────────────────────────
+
+    def _build_url(self, path, host=None):
+        """Centralized classic-API URL construction."""
+        h = host or self.host
+        if self._controller_type == 'self_hosted':
+            site = self._site_id or self.site
+            return f"{h}/api/s/{site}/{path.lstrip('/')}"
+        site = self.site
+        return f"{h}/proxy/network/api/s/{site}/{path.lstrip('/')}"
+
+    def _login_session(self, host, username, password, verify_ssl):
+        """Cookie-based login for self-hosted controllers."""
+        session = requests.Session()
+        session.verify = verify_ssl
+        resp = session.post(f"{host}/api/login", json={
+            "username": username,
+            "password": password,
+            "remember": True,
+        }, timeout=self.TIMEOUT)
+        resp.raise_for_status()
+        csrf = resp.headers.get('X-Csrf-Token')
+        if csrf:
+            self._csrf_token = csrf
+            session.headers['X-Csrf-Token'] = csrf
+        return session
+
+    def _resolve_site_id(self, session, host, site_name):
+        """Resolve classic site name to unique _id for self-hosted controllers."""
+        resp = session.get(f"{host}/api/self/sites", timeout=self.TIMEOUT)
+        resp.raise_for_status()
+        for site in resp.json().get('data', []):
+            if site.get('name') == site_name or site.get('desc') == site_name:
+                return site['_id']
+        raise ValueError(f"Site '{site_name}' not found on this controller")
+
+    @staticmethod
+    def _is_login_required(resp):
+        """Check if response indicates an expired session (self-hosted)."""
+        try:
+            body = resp.json()
+            return body.get('meta', {}).get('msg') == 'api.err.LoginRequired'
+        except Exception:
+            return False
+
     # ── Classic API Helpers ───────────────────────────────────────────────────
 
     def _get(self, path, host=None, session=None):
-        """GET from classic API: /proxy/network/api/s/{site}/{path}"""
+        """GET from classic API."""
         h = host or self.host
         s = session or self._get_session()
-        site = self.site
-        url = f"{h}/proxy/network/api/s/{site}/{path.lstrip('/')}"
+        url = self._build_url(path, host=h)
         resp = s.get(url, timeout=self.TIMEOUT)
+        # Re-auth on expired session (self-hosted only, persistent session only)
+        if (self._controller_type == 'self_hosted' and session is None
+                and (resp.status_code in (401, 403) or self._is_login_required(resp))):
+            self._session = None
+            s = self._get_session()
+            resp = s.get(url, timeout=self.TIMEOUT)
         resp.raise_for_status()
         return resp.json()
 
@@ -189,6 +275,8 @@ class UniFiAPI:
 
     def _get_integration(self, path, host=None, session=None):
         """GET from integration API (no site prefix)."""
+        if self._controller_type == 'self_hosted':
+            raise NotImplementedError("Integration API not available on self-hosted controllers")
         h = host or self.host
         s = session or self._get_session()
         url = f"{h}/proxy/network{path}"
@@ -198,6 +286,8 @@ class UniFiAPI:
 
     def _get_integration_site(self, path):
         """GET from integration API with site UUID prefix."""
+        if self._controller_type == 'self_hosted':
+            raise NotImplementedError("Integration API not available on self-hosted controllers")
         if not self._site_uuid:
             self._discover_site_uuid()
         url = f"{self.host}/proxy/network/integration/v1/sites/{self._site_uuid}{path}"
@@ -207,6 +297,8 @@ class UniFiAPI:
 
     def _patch_integration_site(self, path, body):
         """PATCH to integration API with site UUID prefix."""
+        if self._controller_type == 'self_hosted':
+            raise NotImplementedError("Integration API not available on self-hosted controllers")
         if not self._site_uuid:
             self._discover_site_uuid()
         url = f"{self.host}/proxy/network/integration/v1/sites/{self._site_uuid}{path}"
@@ -218,6 +310,8 @@ class UniFiAPI:
 
     def _discover_site_uuid(self, host=None, session=None):
         """Map classic site name to integration API UUID."""
+        if self._controller_type == 'self_hosted':
+            raise NotImplementedError("Integration API not available on self-hosted controllers")
         sites = self._get_integration('/integration/v1/sites', host=host, session=session)
         for s in sites.get('data', []):
             if s.get('internalReference') == self.site:
@@ -228,8 +322,10 @@ class UniFiAPI:
 
     # ── Phase 1: Connection & Config ──────────────────────────────────────────
 
-    def test_connection(self, host: str, api_key: str, site: str = 'default',
-                        verify_ssl: bool = True) -> dict:
+    def test_connection(self, host: str, site: str = 'default',
+                        verify_ssl: bool = True, controller_type: str = 'unifi_os',
+                        api_key: str | None = None, username: str | None = None,
+                        password: str | None = None) -> dict:
         """Test connectivity with provided credentials.
 
         Returns {success, controller_name, version, site_name} on success,
@@ -237,10 +333,43 @@ class UniFiAPI:
         Does NOT modify self — uses temporary session.
         """
         host = host.rstrip('/')
-        session = self._make_session(api_key, verify_ssl)
 
         try:
-            # Test basic connectivity with sysinfo
+            if controller_type == 'self_hosted':
+                return self._test_self_hosted(host, site, verify_ssl, username, password)
+            return self._test_unifi_os(host, site, verify_ssl, api_key)
+
+        except SSLError:
+            return {'success': False,
+                    'error': 'SSL certificate verification failed. Enable "Skip SSL verification" for self-signed certificates.',
+                    'error_code': 'ssl_error'}
+        except ConnectionError:
+            return {'success': False,
+                    'error': 'Could not connect to the controller. Check the URL and ensure it is reachable.',
+                    'error_code': 'connection_error'}
+        except Timeout:
+            return {'success': False,
+                    'error': 'Connection timed out. The controller may be unreachable.',
+                    'error_code': 'timeout'}
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else 0
+            if status in (401, 403):
+                msg = ('Authentication failed. Check your credentials.'
+                       if controller_type == 'self_hosted'
+                       else 'Authentication failed. Check your API key.')
+                return {'success': False, 'error': msg, 'error_code': 'auth_error'}
+            return {'success': False,
+                    'error': f'Controller returned error: {status}',
+                    'error_code': 'invalid_response'}
+        except Exception as e:
+            return {'success': False,
+                    'error': str(e),
+                    'error_code': 'connection_error'}
+
+    def _test_unifi_os(self, host, site, verify_ssl, api_key):
+        """Test connection to a UniFi OS gateway (API key auth)."""
+        session = self._make_session(api_key, verify_ssl)
+        try:
             url = f"{host}/proxy/network/api/s/{site}/stat/sysinfo"
             resp = session.get(url, timeout=self.TIMEOUT)
 
@@ -258,7 +387,7 @@ class UniFiAPI:
             controller_name = info.get('name') or info.get('hostname', 'Unknown')
             version = info.get('version', 'Unknown')
 
-            # Also verify integration API access (needed for firewall management)
+            # Verify integration API access (needed for firewall management)
             sites_url = f"{host}/proxy/network/integration/v1/sites"
             sites_resp = session.get(sites_url, timeout=self.TIMEOUT)
             sites_resp.raise_for_status()
@@ -281,29 +410,43 @@ class UniFiAPI:
                 'version': version,
                 'site_name': site_name,
             }
-
-        except SSLError:
-            return {'success': False,
-                    'error': 'SSL certificate verification failed. Enable "Skip SSL verification" for self-signed certificates.',
-                    'error_code': 'ssl_error'}
-        except ConnectionError:
-            return {'success': False,
-                    'error': 'Could not connect to the controller. Check the URL and ensure it is reachable.',
-                    'error_code': 'connection_error'}
-        except Timeout:
-            return {'success': False,
-                    'error': 'Connection timed out. The controller may be unreachable.',
-                    'error_code': 'timeout'}
-        except requests.HTTPError as e:
-            return {'success': False,
-                    'error': f'Controller returned error: {e.response.status_code}',
-                    'error_code': 'invalid_response'}
-        except Exception as e:
-            return {'success': False,
-                    'error': str(e),
-                    'error_code': 'connection_error'}
         finally:
             session.close()
+
+    def _test_self_hosted(self, host, site, verify_ssl, username, password):
+        """Test connection to a self-hosted controller (cookie auth)."""
+        session = None
+        try:
+            # Login with cookies
+            session = self._login_session(host, username, password, verify_ssl)
+
+            # Resolve the site _id (self-hosted requires unique _id, not name)
+            site_id = self._resolve_site_id(session, host, site)
+
+            # Probe sysinfo
+            url = f"{host}/api/s/{site_id}/stat/sysinfo"
+            resp = session.get(url, timeout=self.TIMEOUT)
+
+            if self._is_login_required(resp):
+                return {'success': False, 'error': 'Authentication failed. Check your credentials.',
+                        'error_code': 'auth_error'}
+            resp.raise_for_status()
+
+            data = resp.json()
+            info = data.get('data', [{}])[0] if data.get('data') else {}
+            controller_name = info.get('name') or info.get('hostname', 'Unknown')
+            version = info.get('version', 'Unknown')
+
+            return {
+                'success': True,
+                'controller_name': controller_name,
+                'version': version,
+                'site_name': site,
+                'site_id': site_id,
+            }
+        finally:
+            if session:
+                session.close()
 
     def get_network_config(self) -> dict:
         """Fetch network topology from Classic + Integration APIs for wizard."""
@@ -521,6 +664,10 @@ class UniFiAPI:
             'features': self.features,
             'controller_name': self._db.get_config('unifi_controller_name', ''),
             'controller_version': self._db.get_config('unifi_controller_version', ''),
+            'controller_type': self._controller_type,
+            'supports_firewall': self._controller_type != 'self_hosted',
+            'auth_mode': 'cookie' if self._controller_type == 'self_hosted' else 'api_key',
+            'username_set': bool(self._username),
             'status': {
                 'connected': self._last_poll is not None and self._last_poll_error is None,
                 'last_poll': self._last_poll.isoformat() if self._last_poll else None,

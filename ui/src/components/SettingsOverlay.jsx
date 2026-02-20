@@ -3,6 +3,7 @@ import { fetchConfig, fetchUniFiSettings, fetchUniFiNetworkConfig } from '../api
 import SettingsWanNetworks from './SettingsWanNetworks'
 import SettingsFirewall from './SettingsFirewall'
 import SettingsDataBackups from './SettingsDataBackups'
+import SettingsDiagnostics from './SettingsDiagnostics'  // TEMPORARY — delete after #27
 import SetupWizard from './SetupWizard'
 
 function getVlanId(iface) {
@@ -11,7 +12,7 @@ function getVlanId(iface) {
   return match ? parseInt(match[1]) : null
 }
 
-const SECTIONS = [
+const BASE_SECTIONS = [
   {
     id: 'wan-networks',
     label: 'WAN & Networks',
@@ -43,6 +44,17 @@ const SECTIONS = [
   },
 ]
 
+// TEMPORARY — delete after #27 self-hosted firewall support
+const DIAGNOSTICS_SECTION = {
+  id: 'diagnostics',
+  label: 'Diagnostics',
+  icon: (
+    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+    </svg>
+  ),
+}
+
 export default function SettingsOverlay({ onClose, startInReconfig }) {
   const [config, setConfig] = useState(null)
   const [unifiSettings, setUnifiSettings] = useState(null)
@@ -60,6 +72,9 @@ export default function SettingsOverlay({ onClose, startInReconfig }) {
       }
     }).catch(() => {})
   }, [])
+
+  // TEMPORARY — always show diagnostics tab in beta (delete after #27)
+  const sections = [...BASE_SECTIONS, DIAGNOSTICS_SECTION]
 
   const savedWanInterfaces = config?.wan_interfaces || []
   const labels = config?.interface_labels || {}
@@ -158,7 +173,7 @@ export default function SettingsOverlay({ onClose, startInReconfig }) {
       <main className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
         <nav className="w-52 shrink-0 border-r border-gray-800 bg-gray-950 py-4 overflow-y-auto">
-          {SECTIONS.map(section => (
+          {sections.map(section => (
             <button
               key={section.id}
               onClick={() => {
@@ -209,11 +224,15 @@ export default function SettingsOverlay({ onClose, startInReconfig }) {
                 {activeSection === 'firewall' && (
                   <SettingsFirewall
                     unifiEnabled={unifiEnabled}
+                    supportsFirewall={unifiSettings?.supports_firewall !== false}
                     onRestartWizard={handleRestartWizard}
                   />
                 )}
                 {activeSection === 'data-backups' && (
                   <SettingsDataBackups />
+                )}
+                {activeSection === 'diagnostics' && (
+                  <SettingsDiagnostics />
                 )}
               </>
             )}

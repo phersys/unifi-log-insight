@@ -284,8 +284,11 @@ _EXPORTABLE_KEYS = [
     'setup_complete', 'config_version',
     'wizard_path', 'unifi_enabled', 'unifi_host', 'unifi_site',
     'unifi_verify_ssl', 'unifi_poll_interval', 'unifi_features',
-    'unifi_controller_name', 'retention_days', 'dns_retention_days',
+    'unifi_controller_name', 'unifi_controller_type',
+    'retention_days', 'dns_retention_days',
 ]
+# NOTE: unifi_username, unifi_password, and unifi_site_id are NEVER exported
+# (security + site_id is controller-specific and would break on import).
 
 # Key that is only exported when explicitly requested
 _API_KEY_CONFIG_KEY = 'unifi_api_key'

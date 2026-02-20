@@ -22,6 +22,9 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
   const [envHost, setEnvHost] = useState('')
   const [savedHost, setSavedHost] = useState('')
   const [savedApiKey, setSavedApiKey] = useState(false)
+  const [savedUsername, setSavedUsername] = useState(false)
+  const [savedControllerType, setSavedControllerType] = useState(null)
+  const [supportsFirewall, setSupportsFirewall] = useState(true)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   // Full network config from UniFi API (for API-path steps 2-3)
@@ -53,6 +56,9 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
       else if (settings.api_key_set) setSavedApiKey(true)
       if (settings.host_source === 'env') setEnvHost(settings.host)
       if (settings.host && settings.host_source !== 'env') setSavedHost(settings.host)
+      if (settings.username_set) setSavedUsername(true)
+      if (settings.controller_type) setSavedControllerType(settings.controller_type)
+      if (settings.supports_firewall !== undefined) setSupportsFirewall(settings.supports_firewall)
       setSettingsLoaded(true)
     }).catch(() => setSettingsLoaded(true))
   }, [])
@@ -64,12 +70,13 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
 
   const getSteps = () => {
     if (wizardPath === 'unifi_api') {
-      return [
+      const steps = [
         { num: 1, label: 'UniFi Connection' },
         { num: 2, label: 'WAN Configuration' },
         { num: 3, label: 'Network Labels' },
-        { num: 4, label: 'Firewall Rules' },
       ]
+      if (supportsFirewall) steps.push({ num: 4, label: 'Firewall Rules' })
+      return steps
     }
     if (wizardPath === 'log_detection') {
       return [
@@ -90,8 +97,13 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
   const handleBack = () => setStep(s => Math.max(s - 1, 1))
 
   // Step 1: UniFi connection success
-  const handleUniFiSuccess = async () => {
+  const handleUniFiSuccess = async (connectionData) => {
     setWizardPath('unifi_api')
+
+    // Self-hosted controllers don't support firewall management
+    if (connectionData?.controller_type === 'self_hosted') {
+      setSupportsFirewall(false)
+    }
 
     // Auto-populate WAN + Networks from API
     try {
@@ -284,6 +296,8 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                   envHost={envHost}
                   savedHost={savedHost}
                   savedApiKey={savedApiKey}
+                  savedUsername={savedUsername}
+                  savedControllerType={savedControllerType}
                 />
               )}
 
@@ -614,12 +628,18 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                       Back
                     </button>
                     <button
-                      onClick={() => setStep(4)}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-blue-500 hover:bg-blue-600 text-white transition-all"
+                      onClick={supportsFirewall ? () => setStep(4) : handleFinish}
+                      disabled={!supportsFirewall && saving}
+                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 transition-all"
                     >
-                      Next
+                      {supportsFirewall ? 'Next' : (saving ? 'Saving...' : 'Finish')}
                     </button>
                   </div>
+                  {!supportsFirewall && saveError && (
+                    <div className="mt-4 px-3 py-2 rounded bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+                      Failed to save: {saveError}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -645,8 +665,8 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                 </div>
               )}
 
-              {/* Step 4: Firewall Rules (API path only) */}
-              {step === 4 && wizardPath === 'unifi_api' && (
+              {/* Step 4: Firewall Rules (API path + Cloud Gateway only) */}
+              {step === 4 && wizardPath === 'unifi_api' && supportsFirewall && (
                 <div className="space-y-6">
                   <div>
                     <h2 className="text-lg font-semibold text-gray-200 mb-1">Firewall Rules Syslog</h2>

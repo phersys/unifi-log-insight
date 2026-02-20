@@ -23,6 +23,7 @@ from routes.setup import router as setup_router
 from routes.unifi import router as unifi_router
 from routes.abuseipdb import router as abuseipdb_router
 from routes.health import router as health_router
+from routes.debug_selfhosted import router as debug_selfhosted_router  # TEMPORARY — delete after #27
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ app.include_router(setup_router)
 app.include_router(unifi_router)
 app.include_router(abuseipdb_router)
 app.include_router(health_router)
+app.include_router(debug_selfhosted_router)  # TEMPORARY — delete after #27
 
 
 # ── Static file serving ──────────────────────────────────────────────────────
