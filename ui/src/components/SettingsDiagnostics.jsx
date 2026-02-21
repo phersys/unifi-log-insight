@@ -113,7 +113,9 @@ export default function SettingsDiagnostics() {
     const a = document.createElement('a')
     a.href = url
     a.download = 'selfhosted-diagnostics.json'
+    document.body.appendChild(a)
     a.click()
+    document.body.removeChild(a)
     URL.revokeObjectURL(url)
   }
 
@@ -187,15 +189,15 @@ export default function SettingsDiagnostics() {
                 </div>
                 <div>
                   <span className="text-gray-500">Host</span>
-                  <p className="text-gray-200 font-mono truncate">{meta.host}</p>
+                  <p className="text-gray-200 font-mono truncate">{meta.host || 'N/A'}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">Site</span>
-                  <p className="text-gray-200">{meta.site_name} ({meta.site_id})</p>
+                  <p className="text-gray-200">{meta.site_name || 'N/A'} ({meta.site_id || 'N/A'})</p>
                 </div>
                 <div>
                   <span className="text-gray-500">SSL Verify</span>
-                  <p className="text-gray-200">{meta.verify_ssl ? 'Yes' : 'No'}</p>
+                  <p className="text-gray-200">{meta.verify_ssl != null ? (meta.verify_ssl ? 'Yes' : 'No') : 'N/A'}</p>
                 </div>
               </div>
             </div>

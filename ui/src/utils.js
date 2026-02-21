@@ -74,7 +74,7 @@ export const ACTION_STYLES = {
 export const DIRECTION_ICONS = {
   inbound: '↓',
   outbound: '↑',
-  inter_vlan: '↔',
+  inter_vlan: '⇔',
   nat: '⤴\uFE0E',
   local: '⟳',
   vpn: '⛨',
