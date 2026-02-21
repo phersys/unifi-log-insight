@@ -188,8 +188,8 @@ def derive_direction(iface_in: str, iface_out: str, rule_name: str, src_ip: str 
     if _is_broadcast_or_multicast(dst_ip):
         return 'local'
 
-    # Traffic from/to the router's own WAN IP(s)
-    if src_ip and src_ip in WAN_IPS:
+    # Traffic from the router's own WAN IP staying local (not going out WAN)
+    if src_ip and src_ip in WAN_IPS and iface_out not in WAN_INTERFACES:
         return 'local'
 
     # NAT rules (explicit DNAT/PREROUTING)
