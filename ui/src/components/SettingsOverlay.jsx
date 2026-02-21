@@ -3,7 +3,6 @@ import { fetchConfig, fetchUniFiSettings, fetchUniFiNetworkConfig } from '../api
 import SettingsWanNetworks from './SettingsWanNetworks'
 import SettingsFirewall from './SettingsFirewall'
 import SettingsDataBackups from './SettingsDataBackups'
-import SettingsDiagnostics from './SettingsDiagnostics'  // TEMPORARY — delete after #27
 import SetupWizard from './SetupWizard'
 
 function getVlanId(iface) {
@@ -44,17 +43,6 @@ const BASE_SECTIONS = [
   },
 ]
 
-// TEMPORARY — delete after #27 self-hosted firewall support
-const DIAGNOSTICS_SECTION = {
-  id: 'diagnostics',
-  label: 'Diagnostics',
-  icon: (
-    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-      <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-    </svg>
-  ),
-}
-
 export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn = [] }) {
   const [config, setConfig] = useState(null)
   const [unifiSettings, setUnifiSettings] = useState(null)
@@ -73,8 +61,7 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
     }).catch(() => {})
   }, [])
 
-  // TEMPORARY — always show diagnostics tab in beta (delete after #27)
-  const sections = [...BASE_SECTIONS, DIAGNOSTICS_SECTION]
+  const sections = BASE_SECTIONS
 
   const savedWanInterfaces = config?.wan_interfaces || []
   const labels = config?.interface_labels || {}
@@ -231,9 +218,6 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
                 )}
                 {activeSection === 'data-backups' && (
                   <SettingsDataBackups />
-                )}
-                {activeSection === 'diagnostics' && (
-                  <SettingsDiagnostics />
                 )}
               </>
             )}

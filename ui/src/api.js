@@ -238,16 +238,6 @@ export async function runRetentionCleanup() {
 
 // ── Version Check ────────────────────────────────────────────────────────────
 
-// TEMPORARY — delete after #27 self-hosted firewall support
-export async function runSelfHostedDiagnostics() {
-  const resp = await fetch(`${BASE}/debug/selfhosted/explore`)
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: resp.statusText }))
-    throw new Error(err.detail || `API error: ${resp.status}`)
-  }
-  return resp.json()
-}
-
 export async function fetchLatestRelease() {
   const resp = await fetch(
     'https://api.github.com/repos/jmasarweh/unifi-log-insight/releases/latest'

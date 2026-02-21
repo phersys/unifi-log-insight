@@ -1,7 +1,7 @@
 services:
   unifi-log-insight:
     build: .
-    container_name: unifi-log-insight-beta
+    container_name: unifi-log-insight
     restart: unless-stopped
     ports:
       - "514:514/udp"
