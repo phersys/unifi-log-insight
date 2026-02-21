@@ -97,7 +97,7 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
     : savedWanInterfaces.map(iface => ({
         iface,
         name: labels[iface] || iface,
-        wanIp: null,
+        wanIp: (config?.wan_ip_by_iface || {})[iface] || null,
         active: null,
         type: null,
       }))

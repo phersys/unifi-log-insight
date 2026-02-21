@@ -457,37 +457,44 @@ class UniFiAPI:
         netconf = self._get('rest/networkconf')
         networks_raw = netconf.get('data', [])
 
-        # Per-WAN health: 'wan' subsystem -> WAN, 'wan2' subsystem -> WAN2
+        # Per-WAN health: 'wan' subsystem -> WAN, 'wan2' -> WAN2, 'wan3' -> WAN3, etc.
         health = self._get('stat/health')
         wan_health = {}
         for subsystem in health.get('data', []):
             sub_name = subsystem.get('subsystem', '')
             if sub_name == 'wan':
                 wan_health['WAN'] = subsystem
-            elif sub_name == 'wan2':
-                wan_health['WAN2'] = subsystem
+            elif sub_name.startswith('wan') and sub_name[3:].isdigit():
+                wan_health[f'WAN{sub_name[3:]}'] = subsystem
         logger.debug("stat/health WAN subsystems: %s",
                      {k: {'wan_ip': v.get('wan_ip'), 'status': v.get('status')}
                       for k, v in wan_health.items()})
 
-        # ── Try to resolve physical interfaces from gateway wan1/wan2 objects ──
-        device_wan_map = {}  # networkgroup → uplink_ifname from stat/device
+        # ── Try to resolve physical interfaces from gateway wan* objects ──
+        device_wan_map = {}   # networkgroup → uplink_ifname from stat/device
+        device_wan_ips = {}   # networkgroup → ip (fallback when health missing)
         try:
             devices = self._get('stat/device')
             for dev in devices.get('data', []):
-                dev_type = dev.get('type', '')
-                if dev_type not in ('ugw', 'udm'):
+                # Find gateway by presence of wan* keys (no device-type filter)
+                wan_keys = sorted(k for k in dev
+                                  if k.startswith('wan') and k[3:].isdigit())
+                if not wan_keys:
                     continue
-                # wan1 object → WAN, wan2 object → WAN2
-                for key, group in [('wan1', 'WAN'), ('wan2', 'WAN2')]:
-                    wan_obj = dev.get(key)
-                    if not wan_obj or not isinstance(wan_obj, dict):
+                for key in wan_keys:
+                    wan_obj = dev[key]
+                    if not isinstance(wan_obj, dict):
                         continue
-                    uplink_ifname = wan_obj.get('uplink_ifname')
-                    if uplink_ifname:
-                        device_wan_map[group] = uplink_ifname
+                    idx = key[3:]  # '1','2','3'
+                    group = 'WAN' if idx == '1' else f'WAN{idx}'
+                    uplink = wan_obj.get('uplink_ifname')
+                    if uplink and group not in device_wan_map:
+                        device_wan_map[group] = uplink
+                    ip = wan_obj.get('ip')
+                    if ip and group not in device_wan_ips:
+                        device_wan_ips[group] = ip
                 if device_wan_map:
-                    logger.info("Resolved WAN interfaces from gateway device: %s",
+                    logger.info("Resolved WAN interfaces from device: %s",
                                 device_wan_map)
                 break  # Only need the first gateway
         except Exception as e:
@@ -495,7 +502,7 @@ class UniFiAPI:
 
         wan_interfaces = []
         for net in networks_raw:
-            if not net.get('enabled', True):
+            if net.get('enabled') is False:
                 continue
             if net.get('purpose') != 'wan':
                 continue
@@ -522,7 +529,7 @@ class UniFiAPI:
                                    "-> defaulting to %s", wan_type, networkgroup, physical)
 
             health_sub = wan_health.get(networkgroup, {})
-            net_wan_ip = health_sub.get('wan_ip')
+            net_wan_ip = health_sub.get('wan_ip') or device_wan_ips.get(networkgroup)
             wan_interfaces.append({
                 'name': name,
                 'wan_ip': net_wan_ip,
@@ -813,7 +820,7 @@ class UniFiAPI:
                     # Find gateway device name from polled devices
                     gateway_name = None
                     for d in devices:
-                        if d.get('device_type') in ('ugw', 'udm', 'uxg'):
+                        if any(k.startswith('wan') and k[3:].isdigit() for k in d):
                             gateway_name = d.get('device_name') or d.get('model')
                             break
                     if gateway_name:
@@ -825,6 +832,22 @@ class UniFiAPI:
                                 wan_ip_names[wan_ip] = gateway_name
                         if wan_ip_names:
                             self._db.set_config('wan_ip_names', wan_ip_names)
+                    # Update wan_ip_by_iface from network config (keeps WAN IPs
+                    # current through PPPoE reconnections, DHCP renewals, failover)
+                    wan_interfaces = net_config.get('wan_interfaces', [])
+                    wan_ip_by_iface = {
+                        w['physical_interface']: w['wan_ip']
+                        for w in wan_interfaces if w.get('wan_ip')
+                    }
+                    if wan_ip_by_iface:
+                        self._db.set_config('wan_ip_by_iface', wan_ip_by_iface)
+                        # Derive ordered wan_ips from wan_interfaces config
+                        cfg_wan_ifaces = self._db.get_config('wan_interfaces') or []
+                        wan_ips = [wan_ip_by_iface[iface] for iface in cfg_wan_ifaces
+                                   if iface in wan_ip_by_iface]
+                        if wan_ips:
+                            self._db.set_config('wan_ips', wan_ips)
+                            self._db.set_config('wan_ip', wan_ips[0])
                     # Extract gateway IP→VLAN mapping
                     gateway_vlans = {}
                     for net in net_config.get('networks', []):

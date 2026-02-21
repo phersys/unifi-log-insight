@@ -11,7 +11,7 @@ from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from psycopg2.extras import RealDictCursor
 
-from db import get_config
+from db import get_config, get_wan_ips_from_config
 from deps import get_conn, put_conn, enricher_db
 from parsers import VPN_PREFIX_DESCRIPTIONS
 from query_helpers import build_log_query
@@ -211,7 +211,7 @@ def get_logs(
 
 @router.get("/api/logs/{log_id}")
 def get_log(log_id: int):
-    wan_ips = get_config(enricher_db, 'wan_ips') or []
+    wan_ips = get_wan_ips_from_config(enricher_db)
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

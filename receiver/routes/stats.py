@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Query, HTTPException
 from psycopg2.extras import RealDictCursor
 
-from db import get_config
+from db import get_config, get_wan_ips_from_config
 from deps import get_conn, put_conn, enricher_db
 from query_helpers import parse_time_range
 
@@ -74,11 +74,8 @@ def get_stats(
             top_blocked_countries = [dict(r) for r in cur.fetchall()]
 
             # Top blocked external IPs (public src_ip only, exclude WAN IPs)
-            wan_ips = get_config(enricher_db, 'wan_ips') or []
-            wan_ip = get_config(enricher_db, 'wan_ip')
+            wan_ips = get_wan_ips_from_config(enricher_db)
             exclude_ips = ['0.0.0.0']
-            if wan_ip:
-                exclude_ips.append(wan_ip)
             for ip in wan_ips:
                 if ip not in exclude_ips:
                     exclude_ips.append(ip)
