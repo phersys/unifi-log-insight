@@ -33,6 +33,7 @@ def get_current_config():
         "unifi_enabled": unifi_api.enabled,
         "vpn_networks": get_config(enricher_db, "vpn_networks", {}),
         "wan_ip_by_iface": get_config(enricher_db, "wan_ip_by_iface", {}),
+        "vpn_toast_dismissed": get_config(enricher_db, "vpn_toast_dismissed", False),
     }
 
 

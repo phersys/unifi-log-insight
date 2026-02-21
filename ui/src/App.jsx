@@ -5,7 +5,7 @@ import SettingsOverlay from './components/SettingsOverlay'
 import { DashboardSkeleton } from './components/Dashboard'
 
 const Dashboard = React.lazy(() => import('./components/Dashboard'))
-import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal, fetchInterfaces } from './api'
+import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal, dismissVpnToast, fetchInterfaces } from './api'
 import { loadInterfaceLabels } from './utils'
 import { isVpnInterface } from './vpnUtils'
 
@@ -130,8 +130,7 @@ export default function App() {
       })
       setUnlabeledVpn(unlabeled)
       if (!unlabeled.length) { setShowVpnToast(false); return }
-      const dismissed = localStorage.getItem('vpn_toast_dismissed')
-      if (dismissed && Date.now() - parseInt(dismissed) < 6 * 3600 * 1000) return
+      if (config.vpn_toast_dismissed) return
       setShowVpnToast(true)
     }).catch(() => {})
   }, [config, configLoaded])
@@ -313,12 +312,16 @@ export default function App() {
             >
               Configure them here
             </button>
+            {' | '}
+            <button
+              onClick={() => { setShowVpnToast(false); dismissVpnToast().catch(() => {}) }}
+              className="underline hover:text-teal-300"
+            >
+              Dismiss
+            </button>
           </span>
           <button
-            onClick={() => {
-              setShowVpnToast(false)
-              localStorage.setItem('vpn_toast_dismissed', String(Date.now()))
-            }}
+            onClick={() => setShowVpnToast(false)}
             className="text-teal-400 hover:text-teal-300 ml-4"
           >
             &#x2715;
