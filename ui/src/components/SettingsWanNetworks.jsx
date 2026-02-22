@@ -149,8 +149,8 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                   <span className="text-sm font-medium text-gray-200">
                     {unifiSettings?.host || 'UniFi Gateway'}
                   </span>
-                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-400">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 leading-none">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 block" />
                     Online
                   </span>
                 </div>
