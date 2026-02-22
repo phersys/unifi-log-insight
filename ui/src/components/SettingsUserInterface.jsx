@@ -24,7 +24,10 @@ export default function SettingsUserInterface() {
   const [status, setStatus] = useState(null)
 
   useEffect(() => {
-    fetchUiSettings().then(setSettings).catch(() => {})
+    fetchUiSettings().then(setSettings).catch(err => {
+      console.error('Failed to load UI settings:', err)
+      setSettings({ ui_country_display: 'flag_name', ui_ip_subline: 'none', ui_theme: 'dark' })
+    })
   }, [])
 
   const update = (key, value) => {

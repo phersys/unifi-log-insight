@@ -18,7 +18,7 @@ function renderMarkdown(md) {
     .replace(/<\/li>\n<li/g, '</li><li')
     .replace(/\n{2,}/g, '<div class="h-1"></div>')
     .replace(/\n(?=<(?:h[23]|ul|\/ul|div))/g, '')
-    .replace(/(<\/(?:h[23]|ul|div[^>]*)>)\n/g, '$1')
+    .replace(/(<\/(?:h[23]|ul|div)>)\n/g, '$1')
     .replace(/\n/g, '<br/>')
 }
 

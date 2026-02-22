@@ -178,8 +178,8 @@ body {
 [data-theme="light"] .text-gray-100 { color: #1f2937; }
 [data-theme="light"] .text-gray-200 { color: #374151; }
 [data-theme="light"] .text-gray-300 { color: #4b5563; }
-[data-theme="light"] .text-gray-400 { color: #6b7280; }
-[data-theme="light"] .text-gray-500 { color: #9ca3af; }
+[data-theme="light"] .text-gray-400 { color: #9ca3af; }
+[data-theme="light"] .text-gray-500 { color: #6b7280; }
 [data-theme="light"] .text-gray-700 { color: #d1d5db; }
 
 /* Borders */
@@ -252,8 +252,6 @@ body {
 [data-theme="light"] .text-purple-400\/70 { color: #7c3aed; }
 [data-theme="light"] .text-violet-400 { color: #6d28d9; }
 
-/* Darken text-gray-500 for better readability */
-[data-theme="light"] .text-gray-500 { color: #6b7280; }
 [data-theme="light"] .text-gray-600 { color: #4b5563; }
 
 /* Log table header row background */
@@ -263,6 +261,9 @@ body {
 [data-theme="light"] .bg-gray-950\/80 { background-color: rgba(249,250,251,.95); }
 
 /* ── Firewall Rules — hardcoded hex overrides ────────────────────────── */
+/* !important needed: Tailwind's bg-black utility has equal specificity to
+   this [data-theme] selector; without it the dark background leaks through
+   in light mode on the firewall rules container. */
 [data-theme="light"] .bg-black { background-color: #f3f4f6 !important; }
 [data-theme="light"] .text-\[\#cbced2\] { color: #374151; }
 [data-theme="light"] .text-\[\#676f79\] { color: #6b7280; }

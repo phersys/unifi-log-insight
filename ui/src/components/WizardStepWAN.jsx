@@ -72,7 +72,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
     const trimmed = manualInput.trim()
     if (!trimmed) return
     if (!IFACE_REGEX.test(trimmed)) {
-      setManualError('Interface name must start with letters followed by a number (e.g., ppp0, eth4, usb0).')
+      setManualError('Interface name must start with letters followed by a number (e.g., ppp0, eth4, sfp+0).')
       return
     }
     setManualError('')

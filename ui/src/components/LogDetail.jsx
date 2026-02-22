@@ -8,7 +8,7 @@ function CopyButton({ text }) {
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    })
+    }).catch(() => {})
   }, [text])
   return (
     <button onClick={handleCopy} title="Copy" className="ml-1.5 text-gray-500 hover:text-gray-300 transition-colors inline-flex items-center">
