@@ -5,7 +5,7 @@
     </marker>
   </defs>
 
-  <rect x="0" y="0" width="1200" height="720" fill="#0b0f14"/>
+  <rect x="0" y="0" width="1200" height="720" fill="#0d1117"/>
 
   <rect x="170" y="70" width="860" height="560" rx="12" fill="#0f1722" stroke="#c9d1d9" stroke-width="2"/>
   <text x="190" y="95" font-family="Segoe UI, Arial, sans-serif" font-size="18" fill="#e6edf3">Docker Container</text>
