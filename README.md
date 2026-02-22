@@ -188,35 +188,33 @@ You can reconfigure at any time via the **Settings gear** in the top-right corne
 Everything runs inside a single Docker container, managed by supervisord:
 
 ```mermaid
-graph LR
-    subgraph Docker Container
-        direction TB
-
-        subgraph Ingestion
-            SR["📡 Syslog Receiver\nUDP :514"]
-            EN["🌍 Enrichment\nGeoIP · ASN · AbuseIPDB · rDNS"]
-        end
-
-        subgraph Storage
-            PG["🐘 PostgreSQL\nlogs · ip_threats"]
-        end
-
-        subgraph Serving
-            API["⚡ FastAPI + React UI\n:8000"]
-        end
-
-        subgraph Background
-            CRON["🕐 Cron\nMaxMind Updates"]
-            SCHED["🔄 Scheduler\nBlacklist · Retention · Backfill"]
-        end
-
-        SR --> EN --> PG
-        PG --> API
-        SCHED --> PG
+flowchart LR
+  subgraph "Docker Container"
+    subgraph "Ingestion"
+      SR["Syslog Receiver\nUDP 514"]
+      EN["Enrichment\nGeoIP, ASN, AbuseIPDB, rDNS"]
     end
 
-    UDP["🔌 UDP :514\nsyslog in"] --> SR
-    API --> HTTP["🌐 HTTP :8090\nUI + API out"]
+    subgraph "Storage"
+      PG["PostgreSQL\nlogs, ip_threats"]
+    end
+
+    subgraph "Serving"
+      API["FastAPI + React UI\n:8000"]
+    end
+
+    subgraph "Background"
+      CRON["Cron\nMaxMind Updates"]
+      SCHED["Scheduler\nBlacklist, Retention, Backfill"]
+    end
+
+    SR --> EN --> PG
+    PG --> API
+    SCHED --> PG
+  end
+
+  UDP["UDP 514\nsyslog in"] --> SR
+  API --> HTTP["HTTP 8090\nUI + API out"]
 ```
 
 ### 🔀 Log Processing Pipeline
