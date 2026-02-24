@@ -53,7 +53,7 @@ const BASE_SECTIONS = [
   },
 ]
 
-export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn = [] }) {
+export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn = [], onVpnSaved: onVpnSavedApp }) {
   const [config, setConfig] = useState(null)
   const [unifiSettings, setUnifiSettings] = useState(null)
   const [netConfig, setNetConfig] = useState(null)
@@ -215,7 +215,7 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
                     onRestartWizard={handleRestartWizard}
                     vpnNetworks={config?.vpn_networks || {}}
                     interfaceLabels={config?.interface_labels || {}}
-                    onVpnSaved={() => fetchConfig().then(setConfig).catch(() => {})}
+                    onVpnSaved={() => { fetchConfig().then(setConfig).catch(() => {}); onVpnSavedApp?.() }}
                     unlabeledVpn={unlabeledVpn}
                   />
                 )}

@@ -3,7 +3,9 @@ import { saveVpnNetworks } from '../api'
 import { suggestVpnType, getIfaceDescription, BADGE_LABELS, BADGE_CHOICES } from '../vpnUtils'
 import VpnNetworkTable from './VpnNetworkTable'
 
-export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCards, networkCards, onRestartWizard, vpnNetworks, interfaceLabels, onVpnSaved, unlabeledVpn = [] }) {
+export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCards, networkCards, onRestartWizard, vpnNetworks, interfaceLabels, onVpnSaved, unlabeledVpn: rawUnlabeledVpn = [] }) {
+  // Filter out interfaces already present in vpnNetworks to prevent duplicates
+  const unlabeledVpn = rawUnlabeledVpn.filter(i => !vpnNetworks[i.name])
   const [imgLoaded, setImgLoaded] = useState(false)
   const gatewayImgUrl = unifiEnabled ? '/api/unifi/gateway-image' : null
 

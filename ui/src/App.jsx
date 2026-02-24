@@ -210,6 +210,7 @@ export default function App() {
       }}
       startInReconfig={settingsReconfig}
       unlabeledVpn={unlabeledVpn}
+      onVpnSaved={() => reloadConfig().catch(() => {})}
     />
   }
 

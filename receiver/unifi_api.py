@@ -652,7 +652,7 @@ class UniFiAPI:
         'teleport':         ('tlprt', 'TELEPORT'),
         'ipsec-vpn':        ('vti',   'S2S IPSEC'),
         'openvpn-server':   ('tun',   'OVPN SRV'),
-        'openvpn-client':   ('tun',   'OVPN CLT'),
+        'openvpn-client':   ('tunovpnc', 'OVPN CLT'),
         'l2tp-server':      ('l2tp',  'L2TP SRV'),
     }
 
@@ -685,13 +685,19 @@ class UniFiAPI:
 
             prefix, badge = mapping
 
-            # Derive interface name from prefix + wireguard_id (falls back to bare prefix)
+            # Derive interface name from prefix + numeric id
             iface = None
             if prefix:
                 wg_id = net.get('wireguard_id')
                 if wg_id is not None:
                     iface = f'{prefix}{wg_id}'
-                # else: no reliable way to derive interface name — leave as None
+                elif vpn_type in ('openvpn-server', 'openvpn-client'):
+                    # OpenVPN records lack wireguard_id; use tunnel_id,
+                    # x_openvpn_tunnel_id, or fall back to index 1
+                    ovpn_id = net.get('tunnel_id')
+                    if ovpn_id is None:
+                        ovpn_id = net.get('x_openvpn_tunnel_id')
+                    iface = f'{prefix}{ovpn_id}' if ovpn_id is not None else f'{prefix}1'
 
             # Extract network CIDR from ip_subnet (e.g. "10.10.70.1/29")
             cidr = net.get('ip_subnet', '')

@@ -82,12 +82,13 @@ VPN_PREFIX_BADGES = {
     'wgsts': 'S MAGIC',
     'tlprt': 'TELEPORT',
     'vti':   'S2S IPSEC',
+    'tunovpnc': 'OVPN CLT',
     'tun':   'OVPN TUN',
     'vtun':  'OVPN VTN',
     'l2tp':  'L2TP SRV',
 }
 # All known VPN interface prefixes (including ones without auto-detection)
-VPN_INTERFACE_PREFIXES = ('wgsrv', 'wgclt', 'wgsts', 'tlprt', 'vti', 'tun', 'vtun', 'l2tp')
+VPN_INTERFACE_PREFIXES = ('wgsrv', 'wgclt', 'wgsts', 'tlprt', 'vti', 'tunovpnc', 'tun', 'vtun', 'l2tp')
 # Badge abbreviation → human-readable full name (for UI dropdowns)
 VPN_BADGE_LABELS = {
     'WGD SRV':   'WireGuard Server',
@@ -112,6 +113,7 @@ VPN_PREFIX_DESCRIPTIONS = {
     'wgsts': 'Site Magic',
     'tlprt': 'Teleport',
     'vti':   'Site-to-Site IPsec',
+    'tunovpnc': 'OpenVPN Client',
     'tun':   'OpenVPN / Tunnel 1',
     'vtun':  'OpenVPN / Tunnel 2',
     'l2tp':  'L2TP Server',

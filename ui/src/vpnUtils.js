@@ -7,7 +7,7 @@
  */
 
 // Interface prefixes that identify VPN tunnels
-export const VPN_PREFIXES = ['wgsrv', 'wgclt', 'wgsts', 'tlprt', 'vti', 'tun', 'vtun', 'l2tp']
+export const VPN_PREFIXES = ['wgsrv', 'wgclt', 'wgsts', 'tlprt', 'vti', 'tunovpnc', 'tun', 'vtun', 'l2tp']
 
 // Prefix → type abbreviation
 export const VPN_PREFIX_BADGES = {
@@ -16,6 +16,7 @@ export const VPN_PREFIX_BADGES = {
   wgsts: 'S MAGIC',
   tlprt: 'TELEPORT',
   vti: 'S2S IPSEC',
+  tunovpnc: 'OVPN CLT',
   tun: 'OVPN TUN',
   vtun: 'OVPN VTN',
   l2tp: 'L2TP SRV',
@@ -47,6 +48,7 @@ export const VPN_PREFIX_DESCRIPTIONS = {
   wgsts: 'Site Magic',
   tlprt: 'Teleport',
   vti:   'Site-to-Site IPsec',
+  tunovpnc: 'OpenVPN Client',
   tun:   'OpenVPN / Tunnel 1',
   vtun:  'OpenVPN / Tunnel 2',
   l2tp:  'L2TP Server',
@@ -54,9 +56,10 @@ export const VPN_PREFIX_DESCRIPTIONS = {
 
 // Type abbreviation → interface prefix (reverse of VPN_PREFIX_BADGES)
 export const BADGE_TO_PREFIX = {
-  'WGD SRV': 'wgsrv', 'WGD CLT': 'wgclt', 'OVPN TUN': 'tun',
-  'OVPN VTN': 'vtun', 'L2TP SRV': 'l2tp', 'TELEPORT': 'tlprt',
-  'S MAGIC': 'wgsts', 'S2S IPSEC': 'vti',
+  'WGD SRV': 'wgsrv', 'WGD CLT': 'wgclt', 'OVPN CLT': 'tunovpnc',
+  'OVPN SRV': 'tun', 'OVPN TUN': 'tun', 'OVPN VTN': 'vtun',
+  'L2TP SRV': 'l2tp', 'TELEPORT': 'tlprt', 'S MAGIC': 'wgsts',
+  'S2S IPSEC': 'vti',
 }
 
 /** Generate a unique VPN interface name for a given badge type. */
