@@ -47,16 +47,16 @@ def health():
         if not abuseipdb or abuseipdb.get('limit') is None:
             try:
                 db_stats = get_config(enricher_db, 'abuseipdb_rate_limit')
-                paused = db_stats.get('paused_until')
-                pause_active = False
-                if paused:
-                    try:
-                        pause_active = time.time() < float(paused)
-                    except (ValueError, TypeError):
-                        pass
-                if db_stats and (db_stats.get('limit') is not None
-                                 or pause_active):
-                    abuseipdb = db_stats
+                if db_stats:
+                    paused = db_stats.get('paused_until')
+                    pause_active = False
+                    if paused:
+                        try:
+                            pause_active = time.time() < float(paused)
+                        except (ValueError, TypeError):
+                            pass
+                    if db_stats.get('limit') is not None or pause_active:
+                        abuseipdb = db_stats
             except Exception:
                 pass
 
