@@ -225,7 +225,7 @@ export default function ZoneMatrix({ filters, refreshKey, onCellClick, activeCel
 
         {tooltip && (
           <div
-            className="fixed z-50 px-3 py-2 rounded-md bg-gray-900 border border-gray-700 text-xs text-gray-200 whitespace-nowrap pointer-events-none shadow-lg"
+            className="fixed z-50 px-3 py-2 rounded-md bg-black border border-gray-700 text-xs text-gray-200 whitespace-nowrap pointer-events-none shadow-lg"
             style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)' }}
           >
             <div className="font-medium text-gray-100 mb-1">{tooltip.inLabel} → {tooltip.outLabel}</div>

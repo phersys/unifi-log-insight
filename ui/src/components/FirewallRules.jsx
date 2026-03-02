@@ -561,7 +561,7 @@ function BulkConfirmModal({ action, count, srcZone, dstZone, onConfirm, onCancel
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={onCancel}>
       <div
-        className="bg-gray-900 border border-white/[0.07] rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5"
+        className="bg-black border border-white/[0.07] rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5"
         onClick={e => e.stopPropagation()}
       >
         <h3 className="text-sm font-semibold text-[#f9fafa] mb-3">

@@ -23,7 +23,7 @@ export async function exportChartPng(element, filename = 'flow-graph.png') {
   if (!element) return
 
   const theme = document.documentElement.dataset.theme
-  const backgroundColor = theme === 'light' ? '#ffffff' : '#111827'
+  const backgroundColor = theme === 'light' ? '#ffffff' : '#000000'
 
   // Temporarily remove overflow clipping so the full chart is captured on mobile
   const prevOverflow = element.style.overflow

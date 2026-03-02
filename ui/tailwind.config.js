@@ -9,6 +9,11 @@ export default {
       fontFamily: {
         mono: ['JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', 'monospace'],
       },
+      colors: {
+        gray: {
+          950: '#000000',
+        },
+      },
     },
   },
   plugins: [],

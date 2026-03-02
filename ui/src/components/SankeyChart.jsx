@@ -565,7 +565,7 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
             {/* HTML tooltip — positioned over container, not inside SVG */}
             {tooltip && (
               <div
-                className="absolute z-10 px-2.5 py-1.5 rounded bg-gray-900 border border-gray-700 text-xs text-gray-200 whitespace-nowrap pointer-events-none shadow-lg"
+                className="absolute z-10 px-2.5 py-1.5 rounded bg-black border border-gray-700 text-xs text-gray-200 whitespace-nowrap pointer-events-none shadow-lg"
                 style={{ left: tooltip.x, top: tooltip.y }}
               >
                 {tooltip.text}
@@ -590,7 +590,7 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
             role="listbox"
             aria-label="Dimension selector"
             className="sankey-dim-menu z-[60] py-1 rounded-lg shadow-xl border"
-            style={{ ...menuStyle, borderColor: dimMenu.color, backgroundColor: 'var(--sankey-menu-bg, #111827)' }}
+            style={{ ...menuStyle, borderColor: dimMenu.color, backgroundColor: 'var(--sankey-menu-bg, #000)' }}
           >
             {availableOptions.map(opt => (
               <button

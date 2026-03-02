@@ -73,7 +73,7 @@ def create_view(body: dict):
         return row
     except pg_errors.UniqueViolation as e:
         conn.rollback()
-        raise HTTPException(status_code=409, detail="A view with that name already exists") from e
+        raise HTTPException(status_code=409, detail="View name already exists") from e
     except Exception as e:
         conn.rollback()
         logger.exception("Error creating saved view")

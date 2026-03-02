@@ -75,7 +75,7 @@ export default function KebabMenu({ children, onOpen, className = '' }) {
       {open && createPortal(
         <div
           ref={menuRef}
-          className="fixed z-[60] min-w-[200px] py-1.5 bg-gray-900 border border-gray-700 rounded-lg shadow-xl"
+          className="fixed z-[60] min-w-[200px] py-1.5 bg-black border border-gray-700 rounded-lg shadow-xl"
           style={{
             top: pos.top,
             right: Math.max(8, pos.right),

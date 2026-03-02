@@ -200,7 +200,7 @@ export function ThreatMapSkeleton() {
         <div className="h-7 w-10 bg-gray-800 rounded" />
         <div className="h-7 w-10 bg-gray-800 rounded" />
       </div>
-      <div className="flex-1 bg-gray-900" />
+      <div className="flex-1 bg-black" />
     </div>
   )
 }

@@ -4,6 +4,7 @@
 
 body {
   font-family: 'JetBrains Mono', monospace;
+  background-color: #000;
 }
 
 .mcp-logo {
@@ -41,7 +42,7 @@ body {
 /* Sankey custom dropdown menu */
 .sankey-dim-menu {
   min-width: 150px;
-  --sankey-menu-bg: #111827;
+  --sankey-menu-bg: #000;
 }
 [data-theme="light"] .sankey-dim-menu { --sankey-menu-bg: #fff; }
 .sankey-dim-menu-item {
@@ -94,7 +95,7 @@ body {
   max-width: 280px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: #1f2937;
+  background: #000;
   border: 1px solid #374151;
   color: #d1d5db;
   font-size: 11px;
@@ -502,18 +503,18 @@ thead tr { box-shadow: inset 0 -1px 0 var(--thead-border, #1f2937); }
 
 /* ─── MapLibre GL Popup — dark theme ─────────────────────────────────── */
 .maplibregl-popup-content {
-  background: #111827;
+  background: #000;
   color: #d1d5db;
   border: 1px solid #374151;
   border-radius: 8px;
   padding: 8px 12px;
   box-shadow: 0 4px 12px rgba(0,0,0,.4);
 }
-.maplibregl-popup-tip { border-top-color: #111827; }
-.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: #111827; }
-.maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: #111827; }
-.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: #111827; }
-.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: #111827; }
+.maplibregl-popup-tip { border-top-color: #000; }
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: #000; }
+.maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: #000; }
+.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: #000; }
+.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: #000; }
 
 [data-theme="light"] .maplibregl-popup-content {
   background: #ffffff;
