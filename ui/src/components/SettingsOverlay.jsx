@@ -55,7 +55,7 @@ const BASE_SECTIONS = [
   },
   {
     id: 'mcp',
-    label: <span className="flex items-center gap-1.5">MCP <span className="text-[10px] leading-none px-1 py-px rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Beta</span></span>,
+    label: <span className="flex items-center gap-1.5">MCP <span className="text-xs leading-none px-1 py-px rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Beta</span></span>,
     icon: (
       <img src="/mcp-logo.png" alt="MCP" className="mcp-logo" />
     ),
@@ -82,6 +82,16 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
       }
     }).catch(() => {})
   }, [])
+
+  // Close mobile sidebar on Escape
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setSidebarOpen(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [sidebarOpen])
 
   const sections = BASE_SECTIONS
 
@@ -167,8 +177,8 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
             <span className="md:hidden text-gray-200">{sections.find(s => s.id === activeSection)?.label || 'Settings'}</span>
             {reconfigMode && (
               <>
-                <span className="text-gray-600 mx-1">&rsaquo;</span>
-                WAN &amp; Networks
+                <span className="hidden md:inline text-gray-600 mx-1">&rsaquo;</span>
+                <span className="hidden md:inline">WAN &amp; Networks</span>
                 <span className="text-gray-600 mx-1">&rsaquo;</span>
                 <span className="text-gray-300">Reconfigure</span>
                 {wizardPath === 'unifi_api' && (
@@ -224,11 +234,11 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
           {version && (
             <div className="mt-auto border-t border-gray-800 flex items-center justify-center h-[42px]">
               <div className="flex items-center gap-1.5">
-                <span className={`text-[10px] ${outdated ? 'text-amber-400' : 'text-gray-400'}`}>v{version}</span>
+                <span className={`text-xs ${outdated ? 'text-amber-400' : 'text-gray-400'}`}>v{version}</span>
                 {outdated ? (
                   <button
                     onClick={() => setShowNotes(true)}
-                    className="flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+                    className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors"
                     title={`Update available: ${latestRelease.tag}`}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
@@ -239,7 +249,7 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
                 ) : latestRelease?.body && (
                   <button
                     onClick={() => setShowNotes(true)}
-                    className="text-[10px] text-gray-500 hover:text-gray-200 transition-colors"
+                    className="text-xs text-gray-500 hover:text-gray-200 transition-colors"
                   >
                     - Release Notes
                   </button>
