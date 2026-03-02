@@ -11,7 +11,7 @@ from psycopg2.extras import RealDictCursor
 from db import get_config
 from deps import get_conn, put_conn, enricher_db
 from parsers import VPN_PREFIX_DESCRIPTIONS
-from query_helpers import build_log_query, validate_time_params, VALID_TIME_RANGES, ALLOWED_DIMENSIONS
+from query_helpers import build_log_query, validate_time_params, ALLOWED_DIMENSIONS
 
 logger = logging.getLogger('api.flows')
 

@@ -20,7 +20,7 @@ logger = logging.getLogger('api.stats')
 router = APIRouter()
 
 
-def _apply_ip_filters(where, params, src_ip, dst_ip, interface_in, interface_out):
+def _apply_ip_filters(where, params, src_ip, dst_ip, interface_in, interface_out) -> tuple[str, list]:
     """Validate and append IP/interface exact-match filters to a WHERE clause."""
     if src_ip:
         try:
@@ -493,15 +493,15 @@ def get_ip_pairs_csv(
             with conn.cursor() as cur:
                 cur.execute(sql, params)
                 cols = [desc[0] for desc in cur.description]
-                # Header row
                 buf = io.StringIO()
                 writer = csv.writer(buf)
+                # Header row
                 writer.writerow(cols)
                 yield buf.getvalue()
                 # Data rows
                 for row in cur:
-                    buf = io.StringIO()
-                    writer = csv.writer(buf)
+                    buf.seek(0)
+                    buf.truncate()
                     writer.writerow(row)
                     yield buf.getvalue()
             conn.commit()

@@ -222,6 +222,7 @@ class Database:
                 filters     JSONB NOT NULL,
                 created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_views_name ON saved_views (name)",
             # Zone matrix aggregation (interface-to-interface traffic)
             """CREATE INDEX IF NOT EXISTS idx_logs_zone_matrix
                 ON logs (timestamp DESC, interface_in, interface_out, rule_action)

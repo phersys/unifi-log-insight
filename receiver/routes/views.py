@@ -3,6 +3,7 @@
 import logging
 
 from fastapi import APIRouter, HTTPException
+from psycopg2 import errors as pg_errors
 from psycopg2.extras import RealDictCursor, Json
 
 from deps import get_conn, put_conn
@@ -70,6 +71,9 @@ def create_view(body: dict):
                 row['created_at'] = row['created_at'].isoformat()
         conn.commit()
         return row
+    except pg_errors.UniqueViolation as e:
+        conn.rollback()
+        raise HTTPException(status_code=409, detail="A view with that name already exists") from e
     except Exception as e:
         conn.rollback()
         logger.exception("Error creating saved view")

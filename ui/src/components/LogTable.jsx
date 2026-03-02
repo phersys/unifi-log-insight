@@ -144,15 +144,21 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
           <span className="sm:hidden inline-flex items-center justify-center gap-1">
             {log.log_type === 'firewall' ? (
               log.rule_action === 'block' || log.rule_action === 'allow' ? (
-                <svg className={`w-5 h-5 ${FIREWALL_ACTION_COLORS[log.rule_action]}`}
-                     viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  {UNIFI_FIREWALL_ICON}
-                </svg>
+                <>
+                  <svg className={`w-5 h-5 ${FIREWALL_ACTION_COLORS[log.rule_action]}`}
+                       viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    {UNIFI_FIREWALL_ICON}
+                  </svg>
+                  <span className="sr-only">Firewall {log.rule_action}</span>
+                </>
               ) : (
-                <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <polyline points="15 10 20 15 15 20"/>
-                  <path d="M4 4v7a4 4 0 0 0 4 4h12"/>
-                </svg>
+                <>
+                  <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="15 10 20 15 15 20"/>
+                    <path d="M4 4v7a4 4 0 0 0 4 4h12"/>
+                  </svg>
+                  <span className="sr-only">Firewall {log.rule_action || 'redirect'}</span>
+                </>
               )
             ) : (
               <>
@@ -166,6 +172,9 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
                   <span className="text-[9px] font-semibold text-gray-400 uppercase">
                     {MOBILE_ACTION_LABELS[log.dhcp_event || log.wifi_event] || log.dhcp_event || log.wifi_event}
                   </span>
+                )}
+                {!log.dhcp_event && !log.wifi_event && (
+                  <span className="sr-only">{log.log_type}</span>
                 )}
               </>
             )}

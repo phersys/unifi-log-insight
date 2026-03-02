@@ -98,7 +98,19 @@ export default function KebabMenu({ children, onOpen, className = '' }) {
  */
 export function SaveLoadMenuItems({ onSaveView, onLoadView, savedViews, onDeleteView, close }) {
   const [saveName, setSaveName] = useState('')
+  const [saveError, setSaveError] = useState(null)
+  const [saving, setSaving] = useState(false)
   const [showLoadList, setShowLoadList] = useState(false)
+
+  const doSave = () => {
+    if (!saveName.trim() || saving) return
+    setSaving(true)
+    setSaveError(null)
+    Promise.resolve(onSaveView?.(saveName.trim()))
+      .then(() => { setSaveName(''); close() })
+      .catch(err => setSaveError(err.message || 'Failed to save view'))
+      .finally(() => setSaving(false))
+  }
 
   return (
     <>
@@ -110,26 +122,23 @@ export function SaveLoadMenuItems({ onSaveView, onLoadView, savedViews, onDelete
             type="text"
             placeholder="View name..."
             value={saveName}
-            onChange={e => setSaveName(e.target.value)}
+            onChange={e => { setSaveName(e.target.value); setSaveError(null) }}
             maxLength={100}
-            className="flex-1 bg-gray-800 text-gray-300 text-xs rounded px-2 py-1 border border-gray-700 placeholder-gray-600 focus:outline-none focus:border-gray-500"
-            onKeyDown={e => {
-              if (e.key === 'Enter' && saveName.trim()) {
-                onSaveView?.(saveName.trim())
-                setSaveName('')
-                close()
-              }
-            }}
+            className={`flex-1 bg-gray-800 text-gray-300 text-xs rounded px-2 py-1 border placeholder-gray-600 focus:outline-none ${saveError ? 'border-red-500/60 focus:border-red-500' : 'border-gray-700 focus:border-gray-500'}`}
+            onKeyDown={e => { if (e.key === 'Enter') doSave() }}
           />
           <button
             type="button"
-            disabled={!saveName.trim()}
-            onClick={() => { onSaveView?.(saveName.trim()); setSaveName(''); close() }}
+            disabled={!saveName.trim() || saving}
+            onClick={doSave}
             className="px-2 py-1 text-xs rounded bg-teal-600 text-white hover:bg-teal-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            Save
+            {saving ? '...' : 'Save'}
           </button>
         </div>
+        {saveError && (
+          <p className="text-xs text-red-400 mt-1">{saveError}</p>
+        )}
       </div>
 
       <div className="border-t border-gray-800 my-1" />

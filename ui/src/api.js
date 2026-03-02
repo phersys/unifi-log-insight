@@ -123,7 +123,7 @@ export async function createSavedView(name, filters) {
 }
 
 export async function deleteSavedView(id) {
-  const resp = await fetch(`${BASE}/views/${id}`, { method: 'DELETE' })
+  const resp = await fetch(`${BASE}/views/${encodeURIComponent(id)}`, { method: 'DELETE' })
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}))
     throw new Error(body.detail || `API error: ${resp.status}`)

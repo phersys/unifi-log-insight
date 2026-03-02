@@ -83,6 +83,16 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
     }).catch(() => {})
   }, [])
 
+  // Close mobile sidebar on Escape
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setSidebarOpen(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [sidebarOpen])
+
   const sections = BASE_SECTIONS
 
   const savedWanInterfaces = config?.wan_interfaces || []
@@ -167,8 +177,8 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
             <span className="md:hidden text-gray-200">{sections.find(s => s.id === activeSection)?.label || 'Settings'}</span>
             {reconfigMode && (
               <>
-                <span className="text-gray-600 mx-1">&rsaquo;</span>
-                WAN &amp; Networks
+                <span className="hidden md:inline text-gray-600 mx-1">&rsaquo;</span>
+                <span className="hidden md:inline">WAN &amp; Networks</span>
                 <span className="text-gray-600 mx-1">&rsaquo;</span>
                 <span className="text-gray-300">Reconfigure</span>
                 {wizardPath === 'unifi_api' && (

@@ -25,6 +25,12 @@ export async function exportChartPng(element, filename = 'flow-graph.png') {
   const theme = document.documentElement.dataset.theme
   const backgroundColor = theme === 'light' ? '#ffffff' : '#111827'
 
+  // Temporarily remove overflow clipping so the full chart is captured on mobile
+  const prevOverflow = element.style.overflow
+  const prevMaxWidth = element.style.maxWidth
+  element.style.overflow = 'visible'
+  element.style.maxWidth = 'none'
+
   // Inline computed styles on foreignObject children so html-to-image captures them
   const saved = []
   for (const fo of element.querySelectorAll('foreignObject')) {
@@ -40,6 +46,8 @@ export async function exportChartPng(element, filename = 'flow-graph.png') {
     const dataUrl = await toPng(element, {
       pixelRatio: 2,
       backgroundColor,
+      width: element.scrollWidth,
+      height: element.scrollHeight,
     })
 
     const a = document.createElement('a')
@@ -52,6 +60,8 @@ export async function exportChartPng(element, filename = 'flow-graph.png') {
     console.error('PNG export failed:', err)
     throw err
   } finally {
+    element.style.overflow = prevOverflow
+    element.style.maxWidth = prevMaxWidth
     for (const { el, prev } of saved) {
       if (prev) el.setAttribute('style', prev)
       else el.removeAttribute('style')

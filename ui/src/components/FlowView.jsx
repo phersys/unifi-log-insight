@@ -111,14 +111,13 @@ export default function FlowView({ maxFilterDays }) {
       timeFrom: timeFrom || null,
       timeTo: timeTo || null,
     }
-    createSavedView(name, snapshot)
+    return createSavedView(name, snapshot)
       .then(() => {
         skipBadgeClear.current = true
         setActiveViewName(name)
         setTimeout(() => { skipBadgeClear.current = false }, 0)
         refreshSavedViews()
       })
-      .catch(err => console.error('Failed to save view:', err))
   }, [dims, topN, activeActions, activeDirections, timeRange, timeFrom, timeTo, refreshSavedViews])
 
   // Load view handler
