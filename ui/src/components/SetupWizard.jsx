@@ -245,7 +245,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
     const trimmed = manualWanInput.trim()
     if (!trimmed) return
     if (!IFACE_REGEX.test(trimmed)) {
-      setManualWanError('Interface name must start with letters followed by a number (e.g., ppp0, eth4, sfp+0).')
+      setManualWanError('Interface name must start with letters followed by a number, with optional VLAN tag (e.g., ppp0, eth4, eth4.10, sfp+0).')
       return
     }
     if (wanInterfaces.includes(trimmed)) {
@@ -461,7 +461,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                           </div>
                           {ifaceInvalid && (
                             <p className="text-[11px] text-red-400 mt-1.5">
-                              Interface name must start with letters followed by a number (e.g., ppp0, eth4, usb0).
+                              Interface name must start with letters followed by a number, with optional VLAN tag (e.g., ppp0, eth4, eth4.10).
                             </p>
                           )}
                         </div>
