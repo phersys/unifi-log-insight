@@ -473,7 +473,7 @@ function MigrationWizard() {
                       </div>
                     )}
                     <p className="text-xs text-gray-400">
-                      3. Rename <code className="bg-gray-800 px-1 py-0.5 rounded">POSTGRES_PASSWORD</code> to <code className="bg-gray-800 px-1 py-0.5 rounded">SECRET_KEY</code> in your <code className="bg-gray-800 px-1 py-0.5 rounded">.env</code> file (keep the same value — it encrypts stored API keys).
+                      3. Rename <code className="bg-gray-800 px-1 py-0.5 rounded">POSTGRES_PASSWORD</code> to <code className="bg-gray-800 px-1 py-0.5 rounded">SECRET_KEY</code> in your <code className="bg-gray-800 px-1 py-0.5 rounded">.env</code> file (keep the same value — it encrypts stored API keys. If this value changes, previously stored API keys cannot be decrypted.).
                     </p>
                     {envCheck && !envCheck.error && !envCheck.has_secret_key && (
                       <div className="flex items-start gap-2 rounded px-3 py-2 bg-yellow-500/10 border border-yellow-500/30">
