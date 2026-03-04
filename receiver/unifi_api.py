@@ -154,7 +154,7 @@ class UniFiAPI:
         try:
             return decrypt_api_key(encrypted)
         except Exception:
-            logger.warning("Failed to decrypt saved API key — POSTGRES_PASSWORD may have changed")
+            logger.warning("Failed to decrypt saved API key — SECRET_KEY/POSTGRES_PASSWORD may have changed")
             return ''
 
     def _decrypt_db_credential(self, config_key):
@@ -165,7 +165,7 @@ class UniFiAPI:
         try:
             return decrypt_api_key(encrypted)
         except Exception:
-            logger.warning("Failed to decrypt %s — POSTGRES_PASSWORD may have changed", config_key)
+            logger.warning("Failed to decrypt %s — SECRET_KEY/POSTGRES_PASSWORD may have changed", config_key)
             return ''
 
     def reload_config(self):

@@ -50,7 +50,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO un
 
 ## Connectivity Checks Before Wizard
 
-## 1) Confirm Postgres is reachable on host
+### 1) Confirm Postgres is reachable on host
 
 If Postgres container is mapped as `-p 5432:5432`, confirm on host:
 
@@ -58,7 +58,7 @@ If Postgres container is mapped as `-p 5432:5432`, confirm on host:
 psql -h 127.0.0.1 -p 5432 -U unifi -d unifi_logs -c "SELECT 1;"
 ```
 
-## 2) Confirm reachability from UniFi Log Insight container path
+### 2) Confirm reachability from UniFi Log Insight container path
 
 Use the same host/port you plan to enter in the wizard:
 
@@ -68,7 +68,7 @@ docker exec -it unifi-log-insight sh -lc "nc -zv <DB_HOST> <DB_PORT>"
 
 If this fails, Step 2 in the wizard will also fail.
 
-## Linux-specific note
+### Linux-specific note
 
 On Linux Docker, if you want to use `host.docker.internal`, add this to the `unifi-log-insight` service:
 
@@ -85,7 +85,7 @@ Without this mapping, `host.docker.internal` may not resolve.
 
 ## Migration Wizard Steps
 
-## Step 1: Configure
+### Step 1: Configure
 
 In `Settings -> Database Migration`, set:
 - Host
@@ -95,7 +95,7 @@ In `Settings -> Database Migration`, set:
 - Password
 - SSL Mode
 
-## Step 2: Test Connection
+### Step 2: Test Connection
 
 Expected success:
 - "Connection successful"
@@ -113,7 +113,7 @@ If you get auth failed:
 If you get database does not exist:
 - Create target DB first
 
-## Step 3: Start Migration
+### Step 3: Start Migration
 
 The app:
 - Validates target table safety
@@ -123,7 +123,7 @@ The app:
 
 Do not restart during migration.
 
-## Step 4: Generate Updated Compose
+### Step 4: Generate Updated Compose
 
 Paste your current `docker-compose.yml` into the wizard and generate patched output.
 
@@ -177,7 +177,7 @@ If external DB setup fails after migration attempt:
 
 ## Recommended Compose Patterns
 
-## External DB in different compose project (host-mapped port)
+### External DB in different compose project (host-mapped port)
 
 ```yaml
 services:
@@ -194,7 +194,7 @@ services:
 Linux alternative:
 - Use gateway IP if not using host-gateway mapping.
 
-## Same compose network
+### Same compose network
 
 ```yaml
 services:

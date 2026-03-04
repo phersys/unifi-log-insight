@@ -449,6 +449,12 @@ export async function getMigrationStatus() {
   return resp.json()
 }
 
+export async function checkMigrationEnv() {
+  const resp = await fetch(`${BASE}/migration/check-env`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
 export async function patchMigrationCompose(params) {
   const resp = await fetch(`${BASE}/migration/patch-compose`, {
     method: 'POST',

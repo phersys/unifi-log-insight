@@ -3,7 +3,7 @@ import {
   fetchRetentionConfig, updateRetentionConfig, runRetentionCleanup,
   exportConfig, importConfig,
   testMigrationConnection, startMigration, getMigrationStatus,
-  patchMigrationCompose
+  patchMigrationCompose, checkMigrationEnv
 } from '../api'
 import CopyButton from './CopyButton'
 
@@ -53,6 +53,8 @@ function MigrationWizard() {
   const [composeOutput, setComposeOutput] = useState('')
   const [patchError, setPatchError] = useState(null)
   const [patching, setPatching] = useState(false)
+  const [envCheck, setEnvCheck] = useState(null)       // null | { has_db_password }
+  const [envChecking, setEnvChecking] = useState(false)
   const [migStatus, setMigStatus] = useState(null)
   const [migError, setMigError] = useState(null)
   const [isExternal, setIsExternal] = useState(false)
@@ -64,7 +66,7 @@ function MigrationWizard() {
       setIsExternal(s.is_external)
       if (s.status === 'running') { setStep(2); startPolling() }
       else if (s.status === 'complete') { setStep(3); setMigStatus(s) }
-    }).catch(() => {})
+    }).catch(e => console.error('Failed to check migration status:', e))
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
@@ -125,6 +127,16 @@ function MigrationWizard() {
     } finally { setPatching(false) }
   }
 
+  async function handleCheckEnv() {
+    setEnvChecking(true)
+    try {
+      const r = await checkMigrationEnv()
+      setEnvCheck(r)
+    } catch (e) {
+      setEnvCheck({ error: e.message })
+    } finally { setEnvChecking(false) }
+  }
+
   function setField(k, v) { setForm(prev => ({ ...prev, [k]: v })) }
 
   // Already external — no wizard needed
@@ -177,8 +189,8 @@ function MigrationWizard() {
               {/* Form */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
-                  <label className="block text-xs text-gray-400 mb-1">Host</label>
-                  <input value={form.host} onChange={e => setField('host', e.target.value)}
+                  <label htmlFor="mig-host" className="block text-xs text-gray-400 mb-1">Host</label>
+                  <input id="mig-host" value={form.host} onChange={e => setField('host', e.target.value)}
                     placeholder="e.g. postgres or 192.168.1.50"
                     className="w-full px-3 py-1.5 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none" />
                   <p className="text-[11px] text-blue-400 mt-1">
@@ -188,31 +200,31 @@ function MigrationWizard() {
                   </p>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Port</label>
-                  <input type="number" value={form.port} onChange={e => setField('port', parseInt(e.target.value) || 5432)}
+                  <label htmlFor="mig-port" className="block text-xs text-gray-400 mb-1">Port</label>
+                  <input id="mig-port" type="number" value={form.port} onChange={e => setField('port', parseInt(e.target.value) || 5432)}
                     className="w-full px-3 py-1.5 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Database Name</label>
-                <input value={form.dbname} readOnly
+                <label htmlFor="mig-dbname" className="block text-xs text-gray-400 mb-1">Database Name</label>
+                <input id="mig-dbname" value={form.dbname} readOnly
                   className="w-full px-3 py-1.5 rounded bg-gray-900/50 border border-gray-700 text-sm text-gray-500 cursor-not-allowed" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Username</label>
-                  <input value={form.user} onChange={e => setField('user', e.target.value)}
+                  <label htmlFor="mig-user" className="block text-xs text-gray-400 mb-1">Username</label>
+                  <input id="mig-user" value={form.user} onChange={e => setField('user', e.target.value)}
                     className="w-full px-3 py-1.5 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1">Password</label>
-                  <input type="password" value={form.password} onChange={e => setField('password', e.target.value)}
+                  <label htmlFor="mig-password" className="block text-xs text-gray-400 mb-1">Password</label>
+                  <input id="mig-password" type="password" value={form.password} onChange={e => setField('password', e.target.value)}
                     className="w-full px-3 py-1.5 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">SSL Mode</label>
-                <select value={form.sslmode} onChange={e => setField('sslmode', e.target.value)}
+                <label htmlFor="mig-sslmode" className="block text-xs text-gray-400 mb-1">SSL Mode</label>
+                <select id="mig-sslmode" value={form.sslmode} onChange={e => setField('sslmode', e.target.value)}
                   className="w-full px-3 py-1.5 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none">
                   <option value="disable">disable</option>
                   <option value="require">require</option>
@@ -400,18 +412,92 @@ function MigrationWizard() {
                       <CopyButton text={composeOutput} />
                     </div>
                   </div>
-                  <div className="space-y-1.5">
+
+                  {/* Instructions */}
+                  <div className="space-y-2">
                     <p className="text-xs text-gray-400">
-                      Save this as your <code className="bg-gray-800 px-1 py-0.5 rounded">docker-compose.yml</code>, set <code className="bg-gray-800 px-1 py-0.5 rounded">DB_PASSWORD=&lt;password&gt;</code> in your <code className="bg-gray-800 px-1 py-0.5 rounded">.env</code> file, then run <code className="bg-gray-800 px-1 py-0.5 rounded">docker compose up -d</code>.
+                      1. Save this as your <code className="bg-gray-800 px-1 py-0.5 rounded">docker-compose.yml</code>
                     </p>
-                    <p className="text-[11px] text-gray-500">
-                      YAML comments from your original file are not preserved.
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-gray-400">
+                        2. Set <code className="bg-gray-800 px-1 py-0.5 rounded">DB_PASSWORD=&lt;password&gt;</code> in your <code className="bg-gray-800 px-1 py-0.5 rounded">.env</code> file
+                      </p>
+                      <button onClick={handleCheckEnv} disabled={envChecking}
+                        className="px-2 py-0.5 rounded text-[11px] font-medium border border-gray-600 text-gray-400 hover:bg-gray-700 hover:text-gray-200 transition-colors disabled:opacity-50 shrink-0">
+                        {envChecking ? 'Checking...' : 'Check Environment'}
+                      </button>
+                    </div>
+                    {envCheck && (
+                      <div className={`flex items-start gap-2 rounded px-3 py-2 ${
+                        envCheck.error ? 'bg-red-500/10 border border-red-500/30'
+                        : envCheck.has_db_password ? 'bg-emerald-500/10 border border-emerald-500/30'
+                        : 'bg-yellow-500/10 border border-yellow-500/30'
+                      }`}>
+                        <svg className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${
+                          envCheck.error ? 'text-red-400'
+                          : envCheck.has_db_password ? 'text-emerald-400'
+                          : 'text-yellow-400'
+                        }`} fill="currentColor" viewBox="0 0 20 20">
+                          {envCheck.error ? (
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
+                          ) : envCheck.has_db_password ? (
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+                          ) : (
+                            <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                          )}
+                        </svg>
+                        <p className={`text-[11px] ${
+                          envCheck.error ? 'text-red-400'
+                          : envCheck.has_db_password ? 'text-emerald-400'
+                          : 'text-yellow-400'
+                        }`}>
+                          {envCheck.error ? envCheck.error
+                           : envCheck.has_db_password ? 'DB_PASSWORD is set in the environment.'
+                           : 'DB_PASSWORD is not set. Add it to your .env file before restarting.'}
+                        </p>
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-400">
+                      3. Ensure <code className="bg-gray-800 px-1 py-0.5 rounded">SECRET_KEY</code> is set in your <code className="bg-gray-800 px-1 py-0.5 rounded">.env</code> file — it encrypts stored API keys (AbuseIPDB, UniFi, MaxMind).
+                      Set it to the same value as your current <code className="bg-gray-800 px-1 py-0.5 rounded">POSTGRES_PASSWORD</code> so existing keys remain valid.
+                    </p>
+                    {envCheck && !envCheck.error && !envCheck.has_secret_key && (
+                      <div className="flex items-start gap-2 rounded px-3 py-2 bg-yellow-500/10 border border-yellow-500/30">
+                        <svg className="w-3.5 h-3.5 shrink-0 mt-0.5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                        <p className="text-[11px] text-yellow-400">Neither SECRET_KEY nor POSTGRES_PASSWORD is set. API key encryption will not work.</p>
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-400">
+                      4. Run <code className="bg-gray-800 px-1 py-0.5 rounded">docker compose up -d</code>
                     </p>
                   </div>
-                  <button onClick={() => { setComposeOutput(''); setComposeInput('') }}
-                    className="px-4 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors">
-                    Paste Different Compose File
-                  </button>
+
+                  {/* pgdata volume note */}
+                  <div className="flex items-start gap-2 bg-blue-500/10 border border-blue-500/30 rounded px-3 py-2">
+                    <svg className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                    </svg>
+                    <div className="text-[11px] text-blue-400/90 space-y-1">
+                      <p>
+                        Your old embedded database volume (<code className="bg-gray-800 px-1 py-0.5 rounded">pgdata</code>) still exists on disk as a safety net.
+                        Once you've confirmed the external database is working, you can remove it with:
+                      </p>
+                      <code className="block bg-gray-800 px-2 py-1 rounded text-blue-300">docker compose down -v</code>
+                      <p className="text-blue-400/70">This only removes the old volume — your external database is unaffected.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => { setComposeOutput(''); setComposeInput(''); setEnvCheck(null) }}
+                      className="px-4 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors">
+                      Paste Different Compose File
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    YAML comments from your original file are not preserved.
+                  </p>
                 </div>
               )}
             </div>

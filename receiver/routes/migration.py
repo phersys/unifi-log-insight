@@ -193,6 +193,17 @@ def migration_status():
     return state
 
 
+@router.get("/api/migration/check-env")
+def check_env():
+    """Check if DB_PASSWORD and SECRET_KEY/POSTGRES_PASSWORD are set."""
+    has_db_password = bool(os.environ.get('DB_PASSWORD', '').strip())
+    has_secret_key = bool(
+        os.environ.get('SECRET_KEY', '').strip()
+        or os.environ.get('POSTGRES_PASSWORD', '').strip()
+    )
+    return {'has_db_password': has_db_password, 'has_secret_key': has_secret_key}
+
+
 @router.post("/api/migration/patch-compose")
 def patch_compose(req: PatchComposeRequest):
     """Parse user's docker-compose.yml and patch DB-related keys."""
@@ -297,6 +308,32 @@ def patch_compose(req: PatchComposeRequest):
     else:
         # No environment key or unexpected type — create as map
         svc['environment'] = dict(db_vars)
+
+    # Remove embedded pgdata volume mount (external DB doesn't need it)
+    volumes = svc.get('volumes', [])
+    if isinstance(volumes, list):
+        svc['volumes'] = [
+            v for v in volumes
+            if '/var/lib/postgresql' not in str(v)
+        ]
+        if not svc['volumes']:
+            del svc['volumes']
+
+    # Remove top-level pgdata volume if no service references it
+    top_volumes = data.get('volumes')
+    if isinstance(top_volumes, dict):
+        # Find which named volumes are still referenced by any service
+        referenced = set()
+        for s in data.get('services', {}).values():
+            for v in s.get('volumes', []):
+                parts = str(v).split(':')
+                if len(parts) >= 2 and '/' not in parts[0] and not parts[0].startswith('.'):
+                    referenced.add(parts[0])
+        for vol_name in list(top_volumes.keys()):
+            if vol_name not in referenced:
+                del top_volumes[vol_name]
+        if not top_volumes:
+            del data['volumes']
 
     # Add cert volume mount for verify-ca/verify-full
     if req.sslmode in ('verify-ca', 'verify-full'):

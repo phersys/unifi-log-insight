@@ -259,7 +259,8 @@ Everything runs inside a single Docker container, managed by supervisord:
 
 | Variable | Description |
 |---|---|
-| `POSTGRES_PASSWORD` | PostgreSQL password for the `unifi` user |
+| `POSTGRES_PASSWORD` | PostgreSQL password for the embedded `unifi` user. Also used as the encryption key for stored API keys if `SECRET_KEY` is not set |
+| `SECRET_KEY` | *(optional)* Encryption key for stored API keys. Takes precedence over `POSTGRES_PASSWORD`. Recommended for external DB setups |
 | `ABUSEIPDB_API_KEY` | Enables threat scoring on blocked inbound IPs. Free tier: 1,000 check lookups/day + 5 blacklist pulls/day |
 | `MAXMIND_ACCOUNT_ID` | Enables GeoIP auto-update. Without it, manually place `.mmdb` files |
 | `MAXMIND_LICENSE_KEY` | Paired with account ID for auto-update |
@@ -676,8 +677,7 @@ If disk usage is still high, check:
 
 UniFi Log Insight can connect to an existing PostgreSQL 14+ instance instead of running the embedded one. Set `DB_HOST` to a non-localhost address and the embedded PostgreSQL is automatically disabled.
 
-Need step-by-step migration and connection troubleshooting? See the full wiki guide:
-`https://github.com/jmasarweh/unifi-log-insight/wiki/External-PostgreSQL-Migration-Guide`
+Need step-by-step migration and connection troubleshooting? See the [External PostgreSQL Migration Guide](https://github.com/jmasarweh/unifi-log-insight/wiki/External-PostgreSQL-Migration-Guide).
 
 **Requirements:**
 - PostgreSQL 14 or newer
@@ -707,7 +707,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO un
 
 See `docker-compose.external-db.yml` for a complete example.
 
-> **Note:** `POSTGRES_PASSWORD` is always required — it derives the encryption key for stored API keys, independent of the database connection password.
+> **Note:** `SECRET_KEY` (or `POSTGRES_PASSWORD`) is required — it derives the encryption key for stored API keys, independent of the database connection password. For external DB setups, `SECRET_KEY` is recommended to avoid confusion with `POSTGRES_PASSWORD`.
 
 ---
 
@@ -720,8 +720,8 @@ See `docker-compose.external-db.yml` for a complete example.
 - **Site must be the site ID** (often `default`), not the display name with spaces.
   In the UI this is **Site**; in `.env` it is `UNIFI_SITE`.
 - Use a **Local Admin** API key with **Network** permissions.
-- `POSTGRES_PASSWORD` is required to encrypt/decrypt UniFi credentials saved from the **Settings UI**
-  (and also applies to `.env`). If it was missing or changed after saving credentials, re-enter them in Settings.
+- `SECRET_KEY` (or `POSTGRES_PASSWORD`) is required to encrypt/decrypt UniFi credentials saved from the **Settings UI**.
+  If it was missing or changed after saving credentials, re-enter them in Settings.
 
 ### No logs appearing
 
@@ -740,7 +740,7 @@ See `docker-compose.external-db.yml` for a complete example.
 ### Container won't start
 
 1. Check logs: `docker compose logs`
-2. Verify `.env` exists and `POSTGRES_PASSWORD` is set
+2. Verify `.env` exists and `POSTGRES_PASSWORD` (or `SECRET_KEY`) is set
 3. If PostgreSQL data is corrupted, reset: `docker compose down -v && docker compose up -d --build`
 
 ### External Database

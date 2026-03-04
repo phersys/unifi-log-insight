@@ -133,7 +133,7 @@ def test_unifi_connection(body: dict):
                 try:
                     api_key = decrypt_api_key(encrypted)
                 except Exception:
-                    logger.warning("Failed to decrypt saved API key — POSTGRES_PASSWORD may have changed")
+                    logger.warning("Failed to decrypt saved API key — SECRET_KEY/POSTGRES_PASSWORD may have changed")
                     raise HTTPException(
                         status_code=400,
                         detail="Saved API key could not be decrypted. Please re-enter your API key.",
