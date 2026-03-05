@@ -49,3 +49,4 @@ config-export.json
 CLAUDE.md
 .coderabbit.yaml
 pull_logs.py
+pull_logs_state.json
