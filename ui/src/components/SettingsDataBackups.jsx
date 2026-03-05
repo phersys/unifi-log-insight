@@ -22,7 +22,7 @@ function formatBytes(bytes) {
 
 // ── Step pill for migration wizard ──────────────────────────────────────────
 
-const WIZARD_STEPS = ['Configure', 'Test', 'Migration', 'Migration Summary', 'Post Migration']
+const WIZARD_STEPS = ['Configure', 'Migration', 'Required Manual Tasks']
 
 function StepPill({ index, label, current }) {
   const done = index < current
@@ -42,7 +42,7 @@ function StepPill({ index, label, current }) {
 // ── Migration Wizard Component ─────────────────────────────────────────────
 
 function MigrationWizard() {
-  const [step, setStep] = useState(0) // 0=Configure, 1=Test, 2=Migrate, 3=Done
+  const [step, setStep] = useState(0) // 0=Configure, 1=Migrate, 2=Post
   const [form, setForm] = useState({
     host: '', port: 5432, dbname: 'unifi_logs',
     user: '', password: '', sslmode: 'disable'
@@ -64,8 +64,8 @@ function MigrationWizard() {
   useEffect(() => {
     getMigrationStatus().then(s => {
       setIsExternal(s.is_external)
-      if (s.status === 'running') { setStep(2); startPolling() }
-      else if (s.status === 'complete') { setStep(3); setMigStatus(s) }
+      if (s.status === 'running') { setStep(1); startPolling() }
+      else if (s.status === 'complete') { setStep(1); setMigStatus(s) }
     }).catch(e => console.error('Failed to check migration status:', e))
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
@@ -76,7 +76,7 @@ function MigrationWizard() {
       try {
         const s = await getMigrationStatus()
         setMigStatus(s)
-        if (s.status === 'complete') { setStep(3); clearInterval(pollRef.current) }
+        if (s.status === 'complete') { clearInterval(pollRef.current) }
         else if (s.status === 'failed') { setMigError(s.message); clearInterval(pollRef.current) }
       } catch { /* ignore */ }
     }, 3000)
@@ -87,7 +87,6 @@ function MigrationWizard() {
     try {
       const r = await testMigrationConnection(form)
       setTestResult(r)
-      if (r.success) setStep(1)
     } catch (e) {
       setTestResult({ success: false, message: e.message })
     } finally { setTesting(false) }
@@ -97,7 +96,7 @@ function MigrationWizard() {
     setMigError(null)
     try {
       await startMigration(form)
-      setStep(2)
+      setStep(1)
       startPolling()
     } catch (e) {
       setMigError(e.message)
@@ -162,14 +161,14 @@ function MigrationWizard() {
       <div className="rounded-lg border border-gray-700 bg-gray-950">
         <div className="p-5 space-y-5">
           {/* Step indicator */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
             {WIZARD_STEPS.map((label, i) => (
               <StepPill key={label} index={i} label={label} current={step} />
             ))}
           </div>
 
-          {/* ── Steps 0-1: Configure + Test ── */}
-          {step <= 1 && (
+          {/* ── Step 0: Configure ── */}
+          {step === 0 && (
             <div className="space-y-4">
               <p className="text-sm text-gray-400">
                 Migrate your data to an external PostgreSQL 14+ instance. The target database must already exist — tables are created automatically.
@@ -291,101 +290,106 @@ function MigrationWizard() {
             </div>
           )}
 
-          {/* ── Step 2: Migrating ── */}
-          {step === 2 && (
+          {/* ── Step 1: Migration (progress → summary) ── */}
+          {step === 1 && (
             <div className="space-y-4">
-              {/* Progress bar */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-300">{migStatus?.step || 'Starting...'}</span>
-                  <span className="text-xs text-gray-500 font-mono">{migStatus?.progress_pct || 0}%</span>
-                </div>
-                <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-teal-500 rounded-full transition-all duration-500 ease-out"
-                    style={{ width: `${migStatus?.progress_pct || 0}%` }} />
-                </div>
-                {migStatus?.message && <p className="text-xs text-gray-500 mt-1">{migStatus.message}</p>}
-              </div>
-
-              {/* Warning */}
-              <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
-                <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                </svg>
-                <p className="text-xs text-yellow-400/90">Do not restart the container while migration is running. Large datasets may take several minutes to transfer.</p>
-              </div>
-
-              {/* Error state */}
-              {migError && (
-                <div className="space-y-3">
-                  <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded px-3 py-2.5">
-                    <svg className="w-4 h-4 text-red-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
-                    </svg>
-                    <div className="text-xs text-red-400">{migError}</div>
+              {/* In-progress UI */}
+              {migStatus?.status !== 'complete' && (
+                <>
+                  {/* Progress bar */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-300">{migStatus?.step || 'Starting...'}</span>
+                      <span className="text-xs text-gray-500 font-mono">{migStatus?.progress_pct || 0}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-teal-500 rounded-full transition-all duration-500 ease-out"
+                        style={{ width: `${migStatus?.progress_pct || 0}%` }} />
+                    </div>
+                    {migStatus?.message && <p className="text-xs text-gray-500 mt-1">{migStatus.message}</p>}
                   </div>
+
+                  {/* Warning */}
+                  <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
+                    <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    <p className="text-xs text-yellow-400/90">Do not restart the container while migration is running. Large datasets may take several minutes to transfer.</p>
+                  </div>
+
+                  {/* Error state */}
+                  {migError && (
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded px-3 py-2.5">
+                        <svg className="w-4 h-4 text-red-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
+                        </svg>
+                        <div className="text-xs text-red-400">{migError}</div>
+                      </div>
+                      <div className="flex justify-end">
+                        <button onClick={handleReset}
+                          className="px-4 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors">
+                          Back to Configuration
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Complete UI */}
+              {migStatus?.status === 'complete' && (
+                <>
+                  <div className="flex items-start gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded px-3 py-2.5">
+                    <svg className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+                    </svg>
+                    <p className="text-sm text-emerald-400">Migration complete! Your embedded data is untouched and safe.</p>
+                  </div>
+
+                  {/* Row count validation table */}
+                  {migStatus?.details?.validation && (
+                    <div className="rounded border border-gray-700 overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-gray-900">
+                            <th className="text-left px-3 py-1.5 text-gray-400 font-medium">Table</th>
+                            <th className="text-right px-3 py-1.5 text-gray-400 font-medium">Source</th>
+                            <th className="text-right px-3 py-1.5 text-gray-400 font-medium">Target</th>
+                            <th className="text-center px-3 py-1.5 text-gray-400 font-medium">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(migStatus.details.validation).map(([table, v]) => (
+                            <tr key={table} className="border-t border-gray-800">
+                              <td className="px-3 py-1.5 font-mono text-gray-300">{table}</td>
+                              <td className="text-right px-3 py-1.5 text-gray-400 font-mono">{v.source < 0 ? '—' : v.source.toLocaleString()}</td>
+                              <td className="text-right px-3 py-1.5 text-gray-400 font-mono">{v.target < 0 ? '—' : v.target.toLocaleString()}</td>
+                              <td className="text-center px-3 py-1.5">
+                                <span className={v.status === 'ok' ? 'text-emerald-400' : 'text-red-400'}>
+                                  {v.status === 'ok' ? '\u2713' : '\u2717'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
                   <div className="flex justify-end">
-                    <button onClick={handleReset}
-                      className="px-4 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors">
-                      Back to Configuration
+                    <button onClick={() => setStep(2)}
+                      className="px-4 py-1.5 rounded text-xs font-medium bg-teal-600 text-white hover:bg-teal-500 transition-colors">
+                      Continue
                     </button>
                   </div>
-                </div>
+                </>
               )}
             </div>
           )}
 
-          {/* ── Step 3: Done ── */}
-          {step === 3 && (
-            <div className="space-y-4">
-              <div className="flex items-start gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded px-3 py-2.5">
-                <svg className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
-                </svg>
-                <p className="text-sm text-emerald-400">Migration complete! Your embedded data is untouched and safe.</p>
-              </div>
-
-              {/* Row count validation table */}
-              {migStatus?.details?.validation && (
-                <div className="rounded border border-gray-700 overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-gray-900">
-                        <th className="text-left px-3 py-1.5 text-gray-400 font-medium">Table</th>
-                        <th className="text-right px-3 py-1.5 text-gray-400 font-medium">Source</th>
-                        <th className="text-right px-3 py-1.5 text-gray-400 font-medium">Target</th>
-                        <th className="text-center px-3 py-1.5 text-gray-400 font-medium">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(migStatus.details.validation).map(([table, v]) => (
-                        <tr key={table} className="border-t border-gray-800">
-                          <td className="px-3 py-1.5 font-mono text-gray-300">{table}</td>
-                          <td className="text-right px-3 py-1.5 text-gray-400 font-mono">{v.source < 0 ? '—' : v.source.toLocaleString()}</td>
-                          <td className="text-right px-3 py-1.5 text-gray-400 font-mono">{v.target < 0 ? '—' : v.target.toLocaleString()}</td>
-                          <td className="text-center px-3 py-1.5">
-                            <span className={v.status === 'ok' ? 'text-emerald-400' : 'text-red-400'}>
-                              {v.status === 'ok' ? '\u2713' : '\u2717'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              <div className="flex justify-end">
-                <button onClick={() => setStep(4)}
-                  className="px-4 py-1.5 rounded text-xs font-medium bg-teal-600 text-white hover:bg-teal-500 transition-colors">
-                  Continue to Post Migration
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── Step 4: Post Migration ── */}
-          {step === 4 && (
+          {/* ── Step 2: Required Manual Tasks ── */}
+          {step === 2 && (
             <div className="space-y-4">
 
               {/* Compose patcher — Phase 1: Paste */}

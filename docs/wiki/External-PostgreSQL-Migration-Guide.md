@@ -85,7 +85,7 @@ Then use:
 
 ## Migration Wizard Steps
 
-The wizard has 5 steps: **Configure → Test → Migration → Migration Summary → Post Migration**.
+The wizard has 3 steps: **Configure → Migration → Required Manual Tasks**.
 
 ### Step 1: Configure
 
@@ -97,12 +97,10 @@ In **Settings > Data & Backups > Database Migration**, enter:
 - **Password** — the PostgreSQL password
 - **SSL Mode** — see [SSL Mode Guidance](#ssl-mode-guidance) below
 
-### Step 2: Test Connection
-
-Click **Test Connection**. On success:
+Click **Test Connection** to verify connectivity. On success:
 - "Connection successful" with server version shown
 - If the target database already contains tables not owned by UniFi Log Insight, a warning is shown and migration is blocked (use a dedicated database)
-- If the host appears to be a Docker container (e.g. `172.x.x.x` or a short hostname), a **Docker Network Name** field appears — this is optional but recommended so the compose patcher can add the shared network to your compose file
+- The **Start Migration** button appears
 
 If you get **timeout/connection refused**:
 - Verify `DB_HOST` is routable from the app container (see connectivity checks above)
@@ -116,7 +114,7 @@ If you get **authentication failed**:
 If you get **database does not exist**:
 - Create the target database first (see Prerequisites)
 
-### Step 3: Migration
+### Step 2: Migration
 
 Click **Start Migration**. The app:
 1. Validates the target database is safe (no foreign tables)
@@ -130,14 +128,9 @@ Click **Start Migration**. The app:
 
 If migration fails, click **Back to Configuration** to review settings and retry.
 
-### Step 4: Migration Summary
+When migration completes, a validation table compares source and target row counts for each table. Click **Continue** to proceed.
 
-Shows the migration result:
-- Success message with number of log entries transferred
-- Validation table comparing source and target row counts for each table
-- Click **Continue to Post Migration** to proceed
-
-### Step 5: Post Migration
+### Step 3: Required Manual Tasks
 
 This step helps you update your `docker-compose.yml` for external database mode.
 
@@ -150,7 +143,7 @@ This step helps you update your `docker-compose.yml` for external database mode.
    - `DB_SSLMODE` and `DB_SSLROOTCERT` if SSL is configured
    - Healthcheck swapped from `pg_isready` to HTTP check (embedded PostgreSQL is disabled in external mode)
    - Removes the `pgdata` volume mount (no longer needed)
-   - Adds Docker network configuration if you specified a network name in Step 2
+   - Adds Docker network configuration if you specified a Docker network name
    - All other settings (ports, labels, other env vars, etc.) are preserved
 
 **After generating, follow the numbered steps shown in the wizard:**

@@ -278,7 +278,7 @@ export default function LogStream({ version, latestRelease, maxFilterDays, drill
         </div>
       )}
       {/* Filters */}
-      <div className="px-4 py-2.5 border-b border-gray-800 bg-gray-950">
+      <div className="px-4 py-2.5 border-b border-gray-800 bg-gray-950 relative z-20">
         <FilterBar filters={filters} onChange={handleFilterChange} maxFilterDays={maxFilterDays} />
       </div>
 

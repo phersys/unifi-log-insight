@@ -21,7 +21,7 @@ Single Docker container. No external dependencies. Zero data collection.
 - 🔤 [DNS Logging](#-dns-logging)
 - 🖧 [Unraid Setup](#-unraid-setup)
 - 🧹 [Database Maintenance](#-database-maintenance)
-- [External Database](#external-database)
+- 🗄️ [External Database Setup](#️-external-database-setup)
 - 🔧 [Troubleshooting](#-troubleshooting)
 - ⚖️ [Disclaimer](#-disclaimer)
 - 📄 [License](#-license-1)
@@ -53,6 +53,7 @@ Single Docker container. No external dependencies. Zero data collection.
 
 ---
 
+> [!TIP]
 > **Need help fast?** Jump to [Troubleshooting](#-troubleshooting).
 
 ## 📋 Prerequisites
@@ -72,6 +73,7 @@ These are baseline estimates for a small home network. Higher log volume or long
 ---
 ## 🚀 Quick Start
 
+> [!TIP]
 > 🖧 **Running Unraid?** Skip to the [Unraid Setup](#-unraid-setup) section for a no-terminal install guide.
 
 ## 1. Configure Your UniFi Router
@@ -94,7 +96,8 @@ Each firewall rule must have syslog individually enabled. There are two ways to 
 
 **Option B - Manually in the UniFi controller:** Go to **Settings → Policy Engines → Zones**, select each rule, and enable the **Syslog** toggle.
 
-> **Note:** Without per-rule syslog enabled, firewall logs will not appear even if global Activity Logging is configured.
+> [!IMPORTANT]
+> Without per-rule syslog enabled, firewall logs will not appear even if global Activity Logging is configured.
 
 <img width="1920" height="1080" alt="Firewall syslog toggle in UniFi" src="https://github.com/user-attachments/assets/cc08f009-0c70-4d7a-8bf0-5de5e404909a" />
 
@@ -236,7 +239,7 @@ Everything runs inside a single Docker container, managed by supervisord:
 
 ### Current architecture:
 
-- PostgreSQL 16 process for `logs`, `ip_threats`, and config state. PostgreSQL can be embedded (default) or [external](#external-database).
+- PostgreSQL 16 process for `logs`, `ip_threats`, and config state. PostgreSQL can be embedded (default) or [external](#️-external-database-setup).
 - Receiver process (`main.py`) listens on UDP `514`, parses logs, enriches (GeoIP, ASN, AbuseIPDB, rDNS, UniFi device names), and batch-inserts into Postgres. It also runs background threads for stats + WAN/gateway detection, retention cleanup, AbuseIPDB blacklist pulls, threat backfill, and UniFi client/device polling.
 - API process (`api.py`) serves REST endpoints and the React SPA from `/app/static` on port `8000` (mapped to `8090` by docker-compose).
 - Cron process runs `geoip-update.sh` (Wed/Sat 07:00 UTC when MaxMind credentials are set), which refreshes GeoIP databases and signals the receiver to reload them.
@@ -415,6 +418,7 @@ Aggregated views with configurable time range (1h to 365d, based on retention se
 
 UniFi Log Insight includes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that lets AI assistants query your network data directly. Ask your AI to search firewall logs, look up threat intelligence, review your firewall policy and suggest improvements, explore your network topology, and check system health — all through natural conversation.
 
+> [!NOTE]
 > **Beta:** This feature is new. The MCP server exposes read-only tools plus one write tool (toggle firewall syslog). No destructive operations are possible.
 
 ### Supported Clients
@@ -427,7 +431,8 @@ Any desktop MCP client that supports **Streamable HTTP** transport will work. Te
 - **LLM Studio**
 - **Open Web-UI**
 
-> **Note:** Web-based clients (claude.ai, chatgpt.com) cannot reach self-hosted instances on your local network. Use a desktop or CLI client.
+> [!NOTE]
+> Web-based clients (claude.ai, chatgpt.com) cannot reach self-hosted instances on your local network. Use a desktop or CLI client.
 
 ### Setup
 
@@ -623,6 +628,7 @@ Install directly from Unraid's Docker UI - no terminal needed.
 8. Open `http://<unraid-ip>:8090` and complete the Setup Wizard
 9. Configure your UniFi router's syslog to point at `<unraid-ip>:514`
 
+> [!TIP]
 > **Updating:** Click the container's update icon in the Docker tab when a new version is available. Your database and configuration are preserved in the mapped volumes.
 
 ---
@@ -673,21 +679,32 @@ If disk usage is still high, check:
 - Docker container logs (can grow quickly without rotation).
 - PostgreSQL WAL files in `pg_wal` during heavy ingest.
 
-### External Database
+---
 
-UniFi Log Insight can connect to an existing PostgreSQL 14+ instance instead of running the embedded one. Set `DB_HOST` to a non-localhost address and the embedded PostgreSQL is automatically disabled.
+## 🗄️ External Database Setup
 
-Need step-by-step migration and connection troubleshooting? See the [External PostgreSQL Migration Guide](https://github.com/jmasarweh/unifi-log-insight/wiki/External-PostgreSQL-Migration-Guide).
+UniFi Log Insight includes an embedded PostgreSQL 16 instance by default, but you can connect to an existing external PostgreSQL 14+ instance instead. Setting `DB_HOST` to any non-localhost address automatically disables the embedded database.
 
-**Requirements:**
+> [!TIP]
+> Already running the embedded database and want to migrate? Use the built-in **Migration Wizard** in Settings → Data & Backups, or follow the [External PostgreSQL Migration Guide](https://github.com/jmasarweh/unifi-log-insight/wiki/External-PostgreSQL-Migration-Guide) for step-by-step instructions.
+
+### Requirements
+
 - PostgreSQL 14 or newer
 - A database user with DDL privileges (CREATE TABLE, CREATE INDEX, CREATE FUNCTION)
 
-**Setup:**
+### Database Setup
+
+Create the user and database on your external PostgreSQL instance:
+
 ```sql
 CREATE USER unifi WITH PASSWORD 'your_password';
 CREATE DATABASE unifi_logs OWNER unifi;
--- Or if database already exists:
+```
+
+If the database already exists and you need to grant permissions to the `unifi` user:
+
+```sql
 GRANT ALL ON SCHEMA public TO unifi;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO unifi;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO unifi;
@@ -695,7 +712,22 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO unifi;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO unifi;
 ```
 
-**Deployment Topologies:**
+### Connection Configuration
+
+Add these environment variables to your `docker-compose.yml` or `.env` file:
+
+| Variable | Description |
+|----------|-------------|
+| `DB_HOST` | Hostname or IP of your PostgreSQL server (required) |
+| `DB_PORT` | PostgreSQL port (default: `5432`) |
+| `DB_NAME` | Database name (default: `unifi_logs`) |
+| `DB_USER` | Database user (default: `unifi`) |
+| `DB_PASSWORD` | Database password |
+| `DB_SSLMODE` | SSL mode — use `require` for cloud databases (default: `prefer`) |
+
+### Deployment Topologies
+
+The value of `DB_HOST` depends on where your PostgreSQL instance runs relative to the container:
 
 | Topology | `DB_HOST` value |
 |----------|----------------|
@@ -707,7 +739,8 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO un
 
 See `docker-compose.external-db.yml` for a complete example.
 
-> **Note:** `SECRET_KEY` (or `POSTGRES_PASSWORD`) is required — it derives the encryption key for stored API keys, independent of the database connection password. For external DB setups, `SECRET_KEY` is recommended to avoid confusion with `POSTGRES_PASSWORD`.
+> [!IMPORTANT]
+> `SECRET_KEY` (or `POSTGRES_PASSWORD`) is required — it derives the encryption key for stored API keys, independent of the database connection password. For external DB setups, `SECRET_KEY` is recommended to avoid confusion with `POSTGRES_PASSWORD`.
 
 ---
 
@@ -749,7 +782,7 @@ See `docker-compose.external-db.yml` for a complete example.
 |-------|----------|
 | "Connection refused" | Check `DB_HOST`, `DB_PORT`, firewall rules, Docker network connectivity |
 | "Password authentication failed" | Verify `DB_PASSWORD` matches the actual database user password |
-| "Permission denied for table" | Run the GRANT statements from the [External Database](#external-database) section |
+| "Permission denied for table" | Run the GRANT statements from the [External Database Setup](#️-external-database-setup) section |
 | "SSL required" | Set `DB_SSLMODE=require` |
 | Container reports unhealthy | Check `docker logs` for database connection errors |
 
