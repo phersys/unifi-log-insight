@@ -90,11 +90,11 @@ In your UniFi Network controller:
 
 ### 1.2 Enable Syslog Per Firewall Rule
 
-Each firewall rule must have syslog individually enabled. There are two ways to do this:
+Each firewall rule must have syslog individually enabled, or its traffic won't appear in the logs.
 
-**Option A - Use UniFi Log Insight (recommended):** Connect via the UniFi API during setup (or later in Settings), then use the built-in **Firewall Syslog Manager** to view all your zone policies and bulk-toggle syslog - no need to touch the UniFi controller UI.
+**If you plan to connect via the UniFi API** (recommended), you can skip this step — the app's built-in **Firewall Syslog Manager** (Settings → Firewall) lets you view all zone policies and bulk-toggle syslog directly from the UI. The Setup Wizard will walk you through this.
 
-**Option B - Manually in the UniFi controller:** Go to **Settings → Policy Engines → Zones**, select each rule, and enable the **Syslog** toggle.
+**If you plan to use Log Detection** (no API connection), enable syslog manually in your UniFi controller: go to **Settings → Policy Engines → Zones**, select each rule, and enable the **Syslog** toggle.
 
 > [!IMPORTANT]
 > Without per-rule syslog enabled, firewall logs will not appear even if global Activity Logging is configured.
