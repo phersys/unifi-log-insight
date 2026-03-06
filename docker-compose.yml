@@ -11,7 +11,9 @@ services:
       - pgdata:/var/lib/postgresql/data # Not needed when using external DB
       - ./maxmind:/app/maxmind
     # If you add real credentials here, do not commit this file, and 
-    # use .env file instead for credentials/passords
+    # instead use .env file instead for credentials/passords
+    #env_file:
+    #-.env
     environment:
       POSTGRES_PASSWORD: "your_strong_password_here"
       ABUSEIPDB_API_KEY: "your_key_here"
@@ -35,7 +37,7 @@ services:
       retries: 5
       start_period: 45s
 
-# ── Internal Database (Comment with # to use External DB) ──
+# ── Internal Database (Remove volumes section to use External DB) ──
 volumes:
   pgdata:
     name: unifi-log-insight-pgdata
