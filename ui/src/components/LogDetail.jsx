@@ -302,7 +302,7 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
   const showAbuse = !hiddenColumns.has('threat') || !hiddenColumns.has('categories')
   const abuseDetails = []
 
-  if (showAbuse && displayLog.threat_score !== null && displayLog.threat_score !== undefined) {
+  if (showAbuse && Number.isFinite(displayLog.threat_score)) {
     const score = displayLog.threat_score
     const level = getThreatLevel(score)
 
