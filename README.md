@@ -29,27 +29,29 @@ Single Docker container. No external dependencies. Zero data collection.
 
 ## ✨ Features
 
-- **Live Log Stream** - Auto-refreshing table with expandable details, copy-to-clipboard, and intelligent pause/resume
-- **AI Agent Integration (Beta)** - Connect Claude Desktop, Claude Code, or Gemini CLI via the [Model Context Protocol (MCP)](#-ai-agent-integration-mcp) to query your network data through natural conversation
-- **Threat Map** - Interactive world map showing where threats and blocked outbound traffic originate. Switch between heatmap and cluster views, filter by time range, and click any point to inspect individual logs in a sidebar
-- **Dashboard** - Traffic breakdowns, top blocked/allowed countries and IPs, top threats with ASN/city/rDNS/categories, top devices, services, DNS queries
-- **Filters** - Log type, time range, action, direction, VPN badge, interface, service, country, ASN, threat score, IP, rule name, text search
-- **IP Enrichment** - GeoIP (country, city, coordinates), ASN, reverse DNS via MaxMind GeoLite2 with scheduled auto-update and hot-reload
-- **AbuseIPDB Integration** - Threat scoring (23 categories, Tor detection, usage type), daily blacklist pre-seeding, automatic backfill
-- **Syslog Receiver** - UDP 514 listener parsing firewall, DHCP, Wi-Fi, DNS, and system events
-- **Multi-WAN & Direction** - Per-interface WAN IP mapping for failover/load-balanced setups. Auto-classifies traffic as inbound, outbound, inter-VLAN, local, or VPN
-- **VPN Detection** - Auto-detects VPN interfaces (WireGuard, OpenVPN, Teleport, Site Magic) with badge assignment, labels, and CIDRs
-- **UniFi Integration** - Network discovery, device name resolution, and firewall syslog management via **UniFi OS** (API key) or **self-hosted controllers** (username/password)
-- **Firewall Syslog Manager** - Zone matrix with bulk toggle - enable syslog on firewall rules without leaving the app (UniFi OS)
-- **Device Names** - Friendly names from UniFi clients/devices with historical backfill
-- **Theming & Preferences** - Dark/light theme, country display format, IP subline (show ASN beneath IPs)
-- **Interface Labels** - Color-coded labels for traffic flow, applied retroactively to all logs
-- **CSV Export** - Download filtered results up to 100K rows
-- **Retention** - Configurable per log type (60-day default, 10-day DNS). Adjustable via Settings or env vars
-- **Backup & Restore** - Export/import all settings as JSON
-- **DNS Ready** - Full DNS query parsing ([requires configuration](#-dns-logging))
-- **Mobile Responsive** - Collapsible filters, full-width table on small screens
-- **Setup Wizard** - Two paths: **UniFi API** (auto-detects WAN, VLANs, topology) or **Log Detection** (discovers interfaces from live traffic)
+| Feature | Description |
+|---------|-------------|
+| **Live Log Stream** | Auto-refreshing table with expandable details, copy-to-clipboard, and intelligent pause/resume |
+| **AI Agent Integration** *(MCP)* | Connect Claude Desktop, Claude Code, or Gemini CLI via the [Model Context Protocol (MCP)](#-ai-agent-integration-mcp) to query your network data through natural conversation |
+| **Threat Map** | Interactive world map showing where threats and blocked outbound traffic originate. Switch between heatmap and cluster views, filter by time range, and click any point to inspect individual logs |
+| **Dashboard** | Traffic breakdowns, top blocked/allowed countries and IPs, top threats with ASN/city/rDNS/categories, top devices, services, DNS queries |
+| **Filters** | Log type, time range, action, direction, VPN badge, interface, service, country, ASN, threat score, IP, rule name, text search |
+| **IP Enrichment** | GeoIP (country, city, coordinates), ASN, reverse DNS via MaxMind GeoLite2 with scheduled auto-update and hot-reload |
+| **AbuseIPDB Integration** | Threat scoring (23 categories, Tor detection, usage type), daily blacklist pre-seeding, automatic backfill |
+| **Syslog Receiver** | UDP 514 listener parsing firewall, DHCP, Wi-Fi, DNS, and system events |
+| **Multi-WAN & Direction** | Per-interface WAN IP mapping for failover/load-balanced setups. Auto-classifies traffic as inbound, outbound, inter-VLAN, local, or VPN |
+| **VPN Detection** | Auto-detects VPN interfaces (WireGuard, OpenVPN, Teleport, Site Magic) with badge assignment, labels, and CIDRs |
+| **UniFi Integration** | Network discovery, device name resolution, and firewall syslog management via **UniFi OS** (API key) or **self-hosted controllers** (username/password) |
+| **Firewall Syslog Manager** | Zone matrix with bulk toggle — enable syslog on firewall rules without leaving the app (UniFi OS) |
+| **Device Names** | Friendly names from UniFi clients/devices with historical backfill |
+| **Theming & Preferences** | Dark/light theme, country display format, IP subline (show ASN beneath IPs) |
+| **Interface Labels** | Color-coded labels for traffic flow, applied retroactively to all logs |
+| **CSV Export** | Download filtered results up to 100K rows |
+| **Retention** | Configurable per log type (60-day default, 10-day DNS). Adjustable via Settings or env vars |
+| **Backup & Restore** | Export/import all settings as JSON |
+| **DNS Ready** | Full DNS query parsing ([requires configuration](#-dns-logging)) |
+| **Mobile Responsive** | Collapsible filters, full-width table on small screens |
+| **Setup Wizard** | Two paths: **UniFi API** (auto-detects WAN, VLANs, topology) or **Log Detection** (discovers interfaces from live traffic) |
 
 ---
 
