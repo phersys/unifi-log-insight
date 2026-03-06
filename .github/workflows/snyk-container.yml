@@ -15,8 +15,24 @@ name: Snyk Container
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - '**.py'
+      - '**.jsx'
+      - '**.js'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - 'ui/package.json'
+      - 'ui/package-lock.json'
   pull_request:
     branches: [ "main" ]
+    paths:
+      - '**.py'
+      - '**.jsx'
+      - '**.js'
+      - 'Dockerfile'
+      - 'requirements.txt'
+      - 'ui/package.json'
+      - 'ui/package-lock.json'
   schedule:
     - cron: '30 2 * * 4'
 
