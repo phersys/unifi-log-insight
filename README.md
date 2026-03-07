@@ -103,7 +103,6 @@ Each firewall rule must have syslog individually enabled, or its traffic won't a
 > [!IMPORTANT]
 > Without per-rule syslog enabled, firewall logs will not appear even if global Activity Logging is configured.
 
-<img width="1920" height="1080" alt="Firewall syslog toggle in UniFi" src="https://github.com/user-attachments/assets/cc08f009-0c70-4d7a-8bf0-5de5e404909a" />
 
 ## 2. Install
 
