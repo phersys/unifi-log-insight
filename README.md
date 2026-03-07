@@ -71,13 +71,16 @@ Single Docker container. No external dependencies. Zero data collection.
 
 These are baseline estimates for a small home network. Higher log volume or longer retention will require more disk. If you run with tight disk limits, see **Database Maintenance** below.
 
----
 
-<details open>
+
+> [!NOTE]
+> 🖧 **Running Unraid?** Skip to the [Unraid Setup](#-unraid-setup) section for a no-terminal install guide.
+
+---
+<details close>
 <summary><span style="font-size:1.4em;font-weight:bold">🚀 Quick Start</span></summary>
 
-> [!TIP]
-> 🖧 **Running Unraid?** Skip to the [Unraid Setup](#-unraid-setup) section for a no-terminal install guide.
+
 
 ## 1. Configure Your UniFi Router
 
@@ -819,12 +822,59 @@ MIT
 <details>
 <summary><span style="font-size:1.4em;font-weight:bold">📸 App Screenshots</span></summary>
 
-<img width="1985" height="1108" alt="Log Stream" src="https://github.com/user-attachments/assets/56a6ac3a-275a-4245-aaef-1462b35ccdc2" />
+#### Desktop
 
-<img width="1831" height="1261" alt="Dashboard" src="https://github.com/user-attachments/assets/7c0934e5-2342-4b64-8407-eaecf018e42d" />
+##### Log Stream
+<img alt="Log Stream" src="docs/screenshots/log-stream.png" />
 
-<img width="2165" height="1238" alt="Setup Wizard & Firewall Management" src="https://github.com/user-attachments/assets/2cb5ba91-dd0c-4e2a-9527-12a4ed1099d8" />
+##### Expanded Log Detail
+<img alt="Expanded Log Detail" src="docs/screenshots/expanded-log-detail.png" />
 
-<img width="1826" height="1251" alt="Expanded Log Detail" src="https://github.com/user-attachments/assets/a1b43da1-3641-45fd-97dc-b00ecc47bde8" />
+##### Dashboard
+<img alt="Dashboard" src="docs/screenshots/dashboard.png" />
+
+##### Dashboard — Top IPs
+<img alt="Dashboard Top IPs" src="docs/screenshots/dashboard-top-ips.png" />
+
+##### Flow View — Sankey Chart
+<img alt="Flow View" src="docs/screenshots/flow-view.png" />
+
+##### Flow View — Host Detail
+<img alt="Flow View Detail" src="docs/screenshots/flow-view-detail.png" />
+
+##### Flow View — Zone Matrix
+<img alt="Flow View Zone Matrix" src="docs/screenshots/flow-view-zone-matrix.png" />
+
+##### Threat Map — Heatmap
+<img alt="Threat Map Heatmap" src="docs/screenshots/threat-map-heatmap.png" />
+
+##### Threat Map — Clusters
+<img alt="Threat Map Clusters" src="docs/screenshots/threat-map-clusters.png" />
+
+##### Threat Map — Event Detail Sidebar
+<img alt="Threat Map Event Detail Sidebar" src="docs/screenshots/threat-map-event-detail-sidebar.png" />
+
+##### Firewall Syslog Matrix
+<img alt="Firewall Syslog Matrix" src="docs/screenshots/firewall-syslog-matrix.png" />
+
+##### Settings
+<img alt="Settings" src="docs/screenshots/settings.png" />
+
+##### Dark Mode
+<img alt="Dark Mode" src="docs/screenshots/dark-mode.png" />
+
+#### Mobile
+
+##### Log Stream
+<img alt="Main Mobile View" src="docs/screenshots/main-mobile-view.png" />
+
+##### Flow View
+<img alt="Mobile View" src="docs/screenshots/mobile-view.png" />
+
+##### Dashboard
+<img alt="Dashboard Mobile View" src="docs/screenshots/dashboard-mobile-view.png" />
+
+##### Threat Map
+<img alt="Map Mobile View" src="docs/screenshots/map-mobile-view.png" />
 
 </details>
