@@ -26,6 +26,10 @@ const permissionOrigin = document.getElementById('permission-origin');
 const reloadBar = document.getElementById('reload-bar');
 const reloadBtn = document.getElementById('reload-btn');
 
+// Track initial toggle state to avoid unnecessary reload prompts
+let initialTabInjection = true;
+let initialFlowEnrichment = true;
+
 // -- Init --
 
 async function init() {
@@ -37,6 +41,8 @@ async function init() {
     }
     const settings = resp.data;
 
+    initialTabInjection = settings.enableTabInjection;
+    initialFlowEnrichment = settings.enableFlowEnrichment;
     toggleTab.checked = settings.enableTabInjection;
     toggleEnrich.checked = settings.enableFlowEnrichment;
 
@@ -116,15 +122,23 @@ function showPermissionRequest(origin) {
   permissionView.hidden = false;
   permissionOrigin.textContent = origin;
 
-  grantBtn.onclick = async () => {
-    const granted = await chrome.permissions.request({ origins: [origin] });
-    if (granted) {
-      await chrome.storage.local.remove('pendingOrigin');
-      await chrome.runtime.sendMessage({ type: 'PERMISSION_GRANTED' });
-      const settings = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
-      showConnected(settings.data);
-    }
-  };
+  function onGrantClick() {
+    grantBtn.removeEventListener('click', onGrantClick);
+    chrome.permissions.request({ origins: [origin] }).then(async (granted) => {
+      if (granted) {
+        await chrome.storage.local.remove('pendingOrigin');
+        await chrome.runtime.sendMessage({ type: 'PERMISSION_GRANTED' });
+        const settings = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
+        showConnected(settings.data);
+      } else {
+        grantBtn.textContent = 'Permission Denied — Retry';
+        grantBtn.addEventListener('click', onGrantClick);
+      }
+    });
+  }
+
+  grantBtn.textContent = 'Grant Access';
+  grantBtn.addEventListener('click', onGrantClick);
 }
 
 // -- Connected View --
@@ -166,7 +180,10 @@ function onToggleChanged() {
     enableTabInjection: toggleTab.checked,
     enableFlowEnrichment: toggleEnrich.checked,
   });
-  reloadBar.hidden = false;
+  // Only show reload bar if values differ from initial state
+  const changed = toggleTab.checked !== initialTabInjection ||
+                  toggleEnrich.checked !== initialFlowEnrichment;
+  reloadBar.hidden = !changed;
 }
 
 toggleTab.addEventListener('change', onToggleChanged);
@@ -176,6 +193,9 @@ toggleEnrich.addEventListener('change', onToggleChanged);
 
 reloadBtn.addEventListener('click', async () => {
   reloadBar.hidden = true;
+  // Update baseline so toggling back doesn't re-show the bar
+  initialTabInjection = toggleTab.checked;
+  initialFlowEnrichment = toggleEnrich.checked;
 
   const resp = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
   const controllerUrl = resp?.data?.controllerUrl;
@@ -187,7 +207,9 @@ reloadBtn.addEventListener('click', async () => {
     for (const tab of tabs) {
       chrome.tabs.reload(tab.id);
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.debug('Failed to reload controller tabs:', err);
+  }
 });
 
 // -- Disconnect --

@@ -75,6 +75,7 @@ export async function batchThreatLookup(ips) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ips: batch }),
+        signal: AbortSignal.timeout(5000),
       });
       if (!resp.ok) continue;
       const data = await resp.json();

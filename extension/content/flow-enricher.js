@@ -318,7 +318,7 @@ window.addEventListener('uli-ready', function () {
     if (ip.includes(':')) {
       const lower = ip.toLowerCase();
       if (lower === '::1' || lower.startsWith('fe80:') ||
-          lower.startsWith('fc00:') || lower.startsWith('fd') ||
+          /^f[cd][0-9a-f]{2}:/.test(lower) ||
           lower === '::') return true;
       return false;
     }

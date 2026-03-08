@@ -28,6 +28,7 @@
     if (!resp || !resp.ok) return;
     config = resp.data;
   } catch (e) {
+    console.debug('GET_CONFIG failed:', e);
     return;
   }
 
@@ -37,6 +38,7 @@
     const resp = await chrome.runtime.sendMessage({ type: 'GET_BASE_URL' });
     if (resp && resp.ok) baseUrl = resp.url || '';
   } catch (e) {
+    console.debug('GET_BASE_URL failed:', e);
     return;
   }
 

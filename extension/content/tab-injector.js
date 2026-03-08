@@ -314,9 +314,13 @@ window.addEventListener('uli-ready', async function () {
     return container;
   }
 
-  // ESC to deactivate
+  // ESC to deactivate (ignore when focus is on interactive elements)
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && isActive) toggleEmbed();
+    if (e.key === 'Escape' && isActive) {
+      const el = e.target || document.activeElement;
+      if (el && el.matches('input, textarea, select, button, [contenteditable="true"]')) return;
+      toggleEmbed();
+    }
   });
 
   // Deactivate when user clicks another UniFi tab

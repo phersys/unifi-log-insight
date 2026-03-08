@@ -99,17 +99,21 @@ async function registerContentScripts(controllerUrl) {
 
   // Register all content scripts together — they share the same isolated world.
   // controller-detector.js runs first, dispatches 'uli-ready' for the others.
-  await chrome.scripting.registerContentScripts([{
-    id: 'uli-controller',
-    matches: [origin],
-    js: [
-      'content/controller-detector.js',
-      'content/tab-injector.js',
-      'content/flow-enricher.js',
-    ],
-    css: ['content/styles.css'],
-    runAt: 'document_idle',
-  }]);
+  try {
+    await chrome.scripting.registerContentScripts([{
+      id: 'uli-controller',
+      matches: [origin],
+      js: [
+        'content/controller-detector.js',
+        'content/tab-injector.js',
+        'content/flow-enricher.js',
+      ],
+      css: ['content/styles.css'],
+      runAt: 'document_idle',
+    }]);
+  } catch (err) {
+    console.error(`Failed to register content scripts for origin ${origin}:`, err);
+  }
 }
 
 /**
