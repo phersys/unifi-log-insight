@@ -1,6 +1,4 @@
-# 🔍 UniFi Log Insight
-
-
+# UniFi Log Insight
 
 Real-time log analysis for UniFi routers and gateways - captures syslog over UDP, parses firewall, DHCP, Wi-Fi, and system events, enriches them with GeoIP, ASN, threat intelligence, and reverse DNS, then serves everything through a live Dashboard.
 
@@ -10,29 +8,29 @@ Single Docker container. No external dependencies. Zero data collection.
 
 - ✨ [Features](#-features)
 - 📋 [Prerequisites](#-prerequisites)
-- 🚀 [Quick Start](#-quick-start)
-- 🏗️ [Architecture](#️-architecture)
-- ⚙️ [Configuration Reference](#️-configuration-reference)
-- 🗺️ [MaxMind Auto-Update](#️-maxmind-auto-update)
-- 🛡️ [AbuseIPDB Integration](#️-abuseipdb-integration)
-- 🖥️ [UI Guide](#️-ui-guide)
-- 🤖 [AI Agent Integration (MCP)](#-ai-agent-integration-mcp)
-- 📡 [API Endpoints](#-api-endpoints)
-- 🔤 [DNS Logging](#-dns-logging)
-- 🖧  [Unraid Setup](#-unraid-setup)
-- 🧹 [Database Maintenance](#-database-maintenance)
-- 🗄️ [External Database Setup](#️-external-database-setup)
-- 🔧 [Troubleshooting](#-troubleshooting)
-- ⚖️ [Disclaimer](#-disclaimer)
-- 📄 [License](#-license-1)
-- 📸 [App Screenshots](#-app-screenshots)
+- 🚀 [Quick Start](#quick-start)
+- 🏗️ [Architecture](#architecture)
+- ⚙️ [Configuration Reference](#configuration-reference)
+- 🗺️ [MaxMind Auto-Update](#maxmind-auto-update)
+- 🛡️ [AbuseIPDB Integration](#abuseipdb-integration)
+- 🖥️ [UI Guide](#ui-guide)
+- 🤖 [AI Agent Integration (MCP)](#ai-agent-integration-mcp)
+- 📡 [API Endpoints](#api-endpoints)
+- 🔤 [DNS Logging](#dns-logging)
+- 🖧  [Unraid Setup](#unraid-setup)
+- 🧹 [Database Maintenance](#database-maintenance)
+- 🗄️ [External Database Setup](#external-database-setup)
+- 🔧 [Troubleshooting](#troubleshooting)
+- ⚖️ [Disclaimer](#disclaimer)
+- 📄 [License](#license)
+- 📸 [App Screenshots](#app-screenshots)
 
 ## ✨ Features
 
 | Feature | Description |
 |---------|-------------|
 | **Live Log Stream** | Auto-refreshing table with expandable details, copy-to-clipboard, and intelligent pause/resume |
-| **AI Agent Integration** *(MCP)* | Connect Claude Desktop, Claude Code, or Gemini CLI via the [Model Context Protocol (MCP)](#-ai-agent-integration-mcp) to query your network data through natural conversation |
+| **Flow View** | Interactive Sankey flow graph and Zone Matrix showing how traffic moves between sources, services, and destinations. Click any node to cross-filter, drill into a host slide panel for per-IP breakdowns, and save/load custom views |
 | **Threat Map** | Interactive world map showing where threats and blocked outbound traffic originate. Switch between heatmap and cluster views, filter by time range, and click any point to inspect individual logs |
 | **Dashboard** | Traffic breakdowns, top blocked/allowed countries and IPs, top threats with ASN/city/rDNS/categories, top devices, services, DNS queries |
 | **Filters** | Log type, time range, action, direction, VPN badge, interface, service, country, ASN, threat score, IP, rule name, text search |
@@ -43,20 +41,21 @@ Single Docker container. No external dependencies. Zero data collection.
 | **VPN Detection** | Auto-detects VPN interfaces (WireGuard, OpenVPN, Teleport, Site Magic) with badge assignment, labels, and CIDRs |
 | **UniFi Integration** | Network discovery, device name resolution, and firewall syslog management via **UniFi OS** (API key) or **self-hosted controllers** (username/password) |
 | **Firewall Syslog Manager** | Zone matrix with bulk toggle — enable syslog on firewall rules without leaving the app (UniFi OS) |
+| **AI Agent Integration** *(MCP)* | Connect Claude Desktop, Claude Code, Gemini CLI (or any http mcp client) via the [Model Context Protocol (MCP)](#ai-agent-integration-mcp) to query your network data & setup through natural conversation |
 | **Device Names** | Friendly names from UniFi clients/devices with historical backfill |
 | **Theming & Preferences** | Dark/light theme, country display format, IP subline (show ASN beneath IPs) |
 | **Interface Labels** | Color-coded labels for traffic flow, applied retroactively to all logs |
 | **CSV Export** | Download filtered results up to 100K rows |
 | **Retention** | Configurable per log type (60-day default, 10-day DNS). Adjustable via Settings or env vars |
 | **Backup & Restore** | Export/import all settings as JSON |
-| **DNS Ready** | Full DNS query parsing ([requires configuration](#-dns-logging)) |
+| **DNS Ready** | Full DNS query parsing ([requires configuration](#dns-logging)) |
 | **Mobile Responsive** | Collapsible filters, full-width table on small screens |
 | **Setup Wizard** | Two paths: **UniFi API** (auto-detects WAN, VLANs, topology) or **Log Detection** (discovers interfaces from live traffic) |
 
 ---
 
 > [!TIP]
-> **Need help fast?** Jump to [Troubleshooting](#-troubleshooting).
+> **Need help fast?** Jump to [Troubleshooting](#troubleshooting).
 
 ## 📋 Prerequisites
 
@@ -72,11 +71,17 @@ Single Docker container. No external dependencies. Zero data collection.
 
 These are baseline estimates for a small home network. Higher log volume or longer retention will require more disk. If you run with tight disk limits, see **Database Maintenance** below.
 
----
-## 🚀 Quick Start
 
-> [!TIP]
-> 🖧 **Running Unraid?** Skip to the [Unraid Setup](#-unraid-setup) section for a no-terminal install guide.
+
+> [!NOTE]
+> 🖧 **Running Unraid?** Skip to the [Unraid Setup](#unraid-setup) section for a no-terminal install guide.
+
+---
+<a id="quick-start"></a>
+<details close>
+<summary><span style="font-size:1.4em;font-weight:bold">🚀 Quick Start</span></summary>
+
+
 
 ## 1. Configure Your UniFi Router
 
@@ -101,7 +106,6 @@ Each firewall rule must have syslog individually enabled, or its traffic won't a
 > [!IMPORTANT]
 > Without per-rule syslog enabled, firewall logs will not appear even if global Activity Logging is configured.
 
-<img width="1920" height="1080" alt="Firewall syslog toggle in UniFi" src="https://github.com/user-attachments/assets/cc08f009-0c70-4d7a-8bf0-5de5e404909a" />
 
 ## 2. Install
 
@@ -231,9 +235,11 @@ If you don't want to connect the API, the wizard falls back to log-based discove
 
 You can reconfigure at any time via the **Settings gear** in the top-right corner of the UI.
 
----
+</details>
 
-## 🏗️ Architecture
+<a id="architecture"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">🏗️ Architecture</span></summary>
 
 Everything runs inside a single Docker container, managed by supervisord:
 
@@ -241,7 +247,7 @@ Everything runs inside a single Docker container, managed by supervisord:
 
 ### Current architecture:
 
-- PostgreSQL 16 process for `logs`, `ip_threats`, and config state. PostgreSQL can be embedded (default) or [external](#️-external-database-setup).
+- PostgreSQL 16 process for `logs`, `ip_threats`, and config state. PostgreSQL can be embedded (default) or [external](#external-database-setup).
 - Receiver process (`main.py`) listens on UDP `514`, parses logs, enriches (GeoIP, ASN, AbuseIPDB, rDNS, UniFi device names), and batch-inserts into Postgres. It also runs background threads for stats + WAN/gateway detection, retention cleanup, AbuseIPDB blacklist pulls, threat backfill, and UniFi client/device polling.
 - API process (`api.py`) serves REST endpoints and the React SPA from `/app/static` on port `8000` (mapped to `8090` by docker-compose).
 - Cron process runs `geoip-update.sh` (Wed/Sat 07:00 UTC when MaxMind credentials are set), which refreshes GeoIP databases and signals the receiver to reload them.
@@ -256,9 +262,11 @@ Everything runs inside a single Docker container, managed by supervisord:
 6. **Store** - Batched inserts into PostgreSQL with row-by-row fallback on failure
 7. **Serve** - REST API with pagination, filtering, sorting, and CSV export
 
----
+</details>
 
-## ⚙️ Configuration Reference
+<a id="configuration-reference"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">⚙️ Configuration Reference</span></summary>
 
 ### Environment Variables
 
@@ -304,9 +312,11 @@ Everything runs inside a single Docker container, managed by supervisord:
 
 Retention is configurable via the **Settings > Data & Backups** slider, or via `RETENTION_DAYS` / `DNS_RETENTION_DAYS` environment variables. Cleanup runs daily at 03:00 (container local time).
 
----
+</details>
 
-## 🗺️ MaxMind Auto-Update
+<a id="maxmind-auto-update"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">🗺️ MaxMind Auto-Update</span></summary>
 
 When credentials are configured, GeoLite2 databases update automatically on **Wednesday and Saturday at 7:00 AM** (local time per `TZ` - [supported timezones](https://gist.github.com/Soheab/3bec6dd6c1e90962ef46b8545823820d)). This aligns with MaxMind's Tuesday/Friday publish schedule, giving a buffer for propagation.
 
@@ -324,9 +334,11 @@ docker exec unifi-log-insight /app/geoip-update.sh
 docker exec unifi-log-insight cat /var/log/geoip-update.log
 ```
 
----
+</details>
 
-## 🛡️ AbuseIPDB Integration
+<a id="abuseipdb-integration"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">🛡️ AbuseIPDB Integration</span></summary>
 
 When `ABUSEIPDB_API_KEY` is configured, the system provides multi-layered threat intelligence:
 
@@ -358,9 +370,11 @@ The blacklist runs on startup (30-second delay) and then daily at 04:00.
 
 The system uses AbuseIPDB response headers (`X-RateLimit-Remaining`, `Retry-After`) as the single source of truth - no internal counters that desync on container rebuilds. On 429 responses, the enricher pauses automatically until the limit resets (which is midnight UTC).
 
----
+</details>
 
-## 🖥️ UI Guide
+<a id="ui-guide"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">🖥️ UI Guide</span></summary>
 
 ### Log Stream
 
@@ -390,7 +404,7 @@ Access settings via the **gear icon** in the top-right corner. Five sections:
 - **Firewall** - Zone matrix with bulk syslog toggle (UniFi OS only)
 - **Data & Backups** - Retention sliders, manual cleanup, config export/import
 - **User Interface** - Theme (dark/light), country display format (flag + name, flag only, name only), IP address subline (show ASN beneath IPs in log table)
-- **MCP** *(Beta)* - Enable/disable the MCP server, manage tokens and scopes, view AI activity audit log, and get client setup instructions (see [AI Agent Integration](#-ai-agent-integration-mcp))
+- **MCP** *(Beta)* - Enable/disable the MCP server, manage tokens and scopes, view AI activity audit log, and get client setup instructions (see [AI Agent Integration](#ai-agent-integration-mcp))
 
 ### Threat Map
 
@@ -414,9 +428,11 @@ Aggregated views with configurable time range (1h to 365d, based on retention se
 - Top allowed destinations and active internal devices (with device name + VLAN badges)
 - Top blocked/allowed services, top DNS queries
 
----
+</details>
 
-## 🤖 AI Agent Integration (MCP)
+<a id="ai-agent-integration-mcp"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">🤖 AI Agent Integration (MCP)</span></summary>
 
 UniFi Log Insight includes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that lets AI assistants query your network data directly. Ask your AI to search firewall logs, look up threat intelligence, review your firewall policy and suggest improvements, explore your network topology, and check system health — all through natural conversation.
 
@@ -521,9 +537,11 @@ All tool calls are logged with the token ID, tool name, parameters, and success/
 - `set_firewall_syslog` is the only write operation — it toggles syslog on individual firewall rules. All other tools are read-only
 - The SSE (GET) endpoint requires the same authentication as POST
 
----
+</details>
 
-## 📡 API Endpoints
+<a id="api-endpoints"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">📡 API Endpoints</span></summary>
 
 | Endpoint | Description |
 |---|---|
@@ -578,9 +596,11 @@ All tool calls are logged with the token ID, tool name, parameters, and success/
 | `GET /api/settings/mcp/scopes` | List available permission scopes |
 | `GET /api/settings/mcp/audit` | MCP audit trail with pagination |
 
----
+</details>
 
-## 🔤 DNS Logging
+<a id="dns-logging"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">🔤 DNS Logging</span></summary>
 
 The app includes full DNS query parsing, but **some Unifi Routers/Gateways do not send DNS logs by default**. Their dnsmasq instance lacks the `log-queries` directive, and its configuration is auto-generated by `ubios-udapi-server` - manual edits are overwritten on reboot.
 
@@ -593,9 +613,11 @@ The app includes full DNS query parsing, but **some Unifi Routers/Gateways do no
 
 The dashboard includes a "Top DNS Queries" panel and the filter bar has a DNS type toggle - both will populate once DNS logs start flowing.
 
----
+</details>
 
-## 🖧 Unraid Setup
+<a id="unraid-setup"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">🖧 Unraid Setup</span></summary>
 
 Install directly from Unraid's Docker UI - no terminal needed.
 
@@ -633,9 +655,11 @@ Install directly from Unraid's Docker UI - no terminal needed.
 > [!TIP]
 > **Updating:** Click the container's update icon in the Docker tab when a new version is available. Your database and configuration are preserved in the mapped volumes.
 
----
+</details>
 
-## 🧹 Database Maintenance
+<a id="database-maintenance"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">🧹 Database Maintenance</span></summary>
 
 If you run with strict disk limits or aggressive retention, you may notice disk usage stays high even after old logs are deleted. This section explains why and how to safely reclaim space.
 
@@ -681,9 +705,11 @@ If disk usage is still high, check:
 - Docker container logs (can grow quickly without rotation).
 - PostgreSQL WAL files in `pg_wal` during heavy ingest.
 
----
+</details>
 
-## 🗄️ External Database Setup
+<a id="external-database-setup"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">🗄️ External Database Setup</span></summary>
 
 UniFi Log Insight includes an embedded PostgreSQL 16 instance by default, but you can connect to an existing external PostgreSQL 14+ instance instead. Setting `DB_HOST` to any non-localhost address automatically disables the embedded database.
 
@@ -744,9 +770,11 @@ See `docker-compose.external-db.yml` for a complete example.
 > [!IMPORTANT]
 > `SECRET_KEY` (or `POSTGRES_PASSWORD`) is required — it derives the encryption key for stored API keys, independent of the database connection password. For external DB setups, `SECRET_KEY` is recommended to avoid confusion with `POSTGRES_PASSWORD`.
 
----
+</details>
 
-## 🔧 Troubleshooting
+<a id="troubleshooting"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">🔧 Troubleshooting</span></summary>
 
 ### UniFi API Auth Errors (UI or .env)
 
@@ -784,32 +812,93 @@ See `docker-compose.external-db.yml` for a complete example.
 |-------|----------|
 | "Connection refused" | Check `DB_HOST`, `DB_PORT`, firewall rules, Docker network connectivity |
 | "Password authentication failed" | Verify `DB_PASSWORD` matches the actual database user password |
-| "Permission denied for table" | Run the GRANT statements from the [External Database Setup](#️-external-database-setup) section |
+| "Permission denied for table" | Run the GRANT statements from the [External Database Setup](#external-database-setup) section |
 | "SSL required" | Set `DB_SSLMODE=require` |
 | Container reports unhealthy | Check `docker logs` for database connection errors |
 
----
+</details>
 
-## ⚖️ Disclaimer
+<a id="disclaimer"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">⚖️ Disclaimer</span></summary>
 
 This project is not affiliated with, endorsed by, or associated with Ubiquiti Inc. "UniFi" and related brand names are trademarks of Ubiquiti Inc. All rights to those trademarks are reserved by their respective owners.
 
----
+</details>
 
-## 📄 License
+<a id="license"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">📄 License</span></summary>
 
-MIT
+Licensed under the [Business Source License 1.1](LICENSE) (BSL 1.1).
 
-## 📸 App Screenshots
+**You may** freely use, modify, and self-host UniFi Log Insight for non-commercial and internal business purposes.
 
----
+**You may not** offer the Licensed Work to third parties on a hosted or embedded basis to compete with the Licensor's paid offerings without a commercial license.
 
-<img width="1985" height="1108" alt="Log Stream" src="https://github.com/user-attachments/assets/56a6ac3a-275a-4245-aaef-1462b35ccdc2" />
+Each version converts to **Apache License 2.0** four years after its release date.
 
-<img width="1831" height="1261" alt="Dashboard" src="https://github.com/user-attachments/assets/7c0934e5-2342-4b64-8407-eaecf018e42d" />
+Exceptions to the BSL terms may be granted on a case-by-case basis — contact the Licensor for inquiries.
 
-<img width="2165" height="1238" alt="Setup Wizard & Firewall Management" src="https://github.com/user-attachments/assets/2cb5ba91-dd0c-4e2a-9527-12a4ed1099d8" />
+</details>
 
-<img width="1826" height="1251" alt="Expanded Log Detail" src="https://github.com/user-attachments/assets/a1b43da1-3641-45fd-97dc-b00ecc47bde8" />
+<a id="app-screenshots"></a>
+<details>
+<summary><span style="font-size:1.4em;font-weight:bold">📸 App Screenshots</span></summary>
 
----
+#### Desktop
+
+##### Log Stream
+<img alt="Log Stream" src="docs/screenshots/log-stream.png" />
+
+##### Expanded Log Detail
+<img alt="Expanded Log Detail" src="docs/screenshots/expanded-log-detail.png" />
+
+##### Dashboard
+<img alt="Dashboard" src="docs/screenshots/dashboard.png" />
+
+##### Dashboard — Top IPs
+<img alt="Dashboard Top IPs" src="docs/screenshots/dashboard-top-ips.png" />
+
+##### Flow View — Sankey Chart
+<img alt="Flow View" src="docs/screenshots/flow-view.png" />
+
+##### Flow View — Host Detail
+<img alt="Flow View Detail" src="docs/screenshots/flow-view-detail.png" />
+
+##### Flow View — Zone Matrix
+<img alt="Flow View Zone Matrix" src="docs/screenshots/flow-view-zone-matrix.png" />
+
+##### Threat Map — Heatmap
+<img alt="Threat Map Heatmap" src="docs/screenshots/threat-map-heatmap.png" />
+
+##### Threat Map — Clusters
+<img alt="Threat Map Clusters" src="docs/screenshots/threat-map-clusters.png" />
+
+##### Threat Map — Event Detail Sidebar
+<img alt="Threat Map Event Detail Sidebar" src="docs/screenshots/threat-map-event-detail-sidebar.png" />
+
+##### Firewall Syslog Matrix
+<img alt="Firewall Syslog Matrix" src="docs/screenshots/firewall-syslog-matrix.png" />
+
+##### Settings
+<img alt="Settings" src="docs/screenshots/settings.png" />
+
+##### Dark Mode
+<img alt="Dark Mode" src="docs/screenshots/dark-mode.png" />
+
+#### Mobile
+
+##### Log Stream
+<img alt="Main Mobile View" src="docs/screenshots/main-mobile-view.png" />
+
+##### Flow View
+<img alt="Mobile View" src="docs/screenshots/mobile-view.png" />
+
+##### Dashboard
+<img alt="Dashboard Mobile View" src="docs/screenshots/dashboard-mobile-view.png" />
+
+##### Threat Map
+<img alt="Map Mobile View" src="docs/screenshots/map-mobile-view.png" />
+
+</details>
