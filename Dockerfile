@@ -13,7 +13,7 @@ LABEL org.opencontainers.image.title="UniFi Log Insight"
 LABEL org.opencontainers.image.description="Real-time log analysis for UniFi routers — syslog, GeoIP, threat intelligence, and a live dashboard in a single container"
 LABEL org.opencontainers.image.source="https://github.com/jmasarweh/unifi-log-insight"
 LABEL org.opencontainers.image.url="https://github.com/jmasarweh/unifi-log-insight"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses="BSL-1.1"
 LABEL org.opencontainers.image.vendor="jmasarweh"
 
 ENV DEBIAN_FRONTEND=noninteractive
