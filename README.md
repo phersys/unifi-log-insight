@@ -843,8 +843,8 @@ Exceptions to the BSL terms may be granted on a case-by-case basis — contact t
 </details>
 
 <a id="app-screenshots"></a>
-<details>
-<summary><span style="font-size:1.4em;font-weight:bold">📸 App Screenshots</span></summary>
+
+<span style="font-size:1.4em;font-weight:bold">📸 App Screenshots</span>
 
 #### Desktop
 
@@ -901,4 +901,3 @@ Exceptions to the BSL terms may be granted on a case-by-case basis — contact t
 ##### Threat Map
 <img alt="Map Mobile View" src="docs/screenshots/map-mobile-view.png" />
 
-</details>
