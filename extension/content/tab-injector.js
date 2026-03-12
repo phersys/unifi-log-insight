@@ -35,9 +35,12 @@ window.addEventListener('uli-ready', async function () {
     console.error('Invalid Log Insight URL:', logInsightUrl, e);
     return;
   }
-  const iconUrlGreyLight = chrome.runtime.getURL('icons/icon-32-grey.png');
-  const iconUrlGreyDark = chrome.runtime.getURL('icons/icon-32-grey-dark.png');
-  const iconUrlBlue = chrome.runtime.getURL('icons/icon-32-blue.png');
+  // Inline SVG data URIs — eliminates web_accessible_resources and prevents
+  // external sites from fingerprinting the extension via icon probing.
+  const _iconSvg = (fill) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="${fill}"/><text x="16" y="22.5" text-anchor="middle" font-family="Arial,sans-serif" font-weight="bold" font-size="20" fill="#fff">U</text></svg>`)}`;
+  const iconUrlGreyLight = _iconSvg('#6b7280');
+  const iconUrlGreyDark = _iconSvg('#4b5563');
+  const iconUrlBlue = _iconSvg('#3b82f6');
 
   /** Return the correct inactive icon URL for the current theme. */
   function inactiveIconUrl() {
@@ -398,7 +401,6 @@ window.addEventListener('uli-ready', async function () {
     iframeLoaded = false;
     const iframeSrc = new URL(logInsightUrl);
     iframeSrc.searchParams.set('theme', theme);
-    iframeSrc.searchParams.set('parentOrigin', location.origin);
     iframe.src = iframeSrc.href;
     iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
     iframe.style.cssText = 'width:100%;height:100%;border:none;';

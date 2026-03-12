@@ -21,6 +21,7 @@ window.addEventListener('uli-ready', async function () {
   const config = window.__uliConfig;
   if (!config || !config.enableFlowEnrichment) return;
 
+  if (!window.__uliUtils) { console.warn('[ULI][Panel] shared-utils not loaded'); return; }
   const { ABUSE_CATEGORIES, IPV4_RE, isPrivateIP, getThreatLevel, escapeHtml, escapeAttr, detectTheme, navigateToIP, onThemeChange } = window.__uliUtils;
 
   let threatColors = null;
@@ -119,7 +120,10 @@ window.addEventListener('uli-ready', async function () {
         type: 'BATCH_THREAT_LOOKUP',
         ips: uniqueIPs,
       });
-      if (!resp || !resp.ok || !resp.data) return;
+      if (!resp || !resp.ok || !resp.data) {
+        console.debug('[ULI][Panel] BATCH_THREAT_LOOKUP returned non-ok:', resp);
+        return;
+      }
       threatData = resp.data;
     } catch (e) {
       if (e?.message?.includes('Extension context invalidated')) {

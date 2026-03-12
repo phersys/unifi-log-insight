@@ -153,10 +153,10 @@ async function init() {
     }
     const settings = resp.data;
 
-    initialTabInjection = settings.enableTabInjection;
-    initialFlowEnrichment = settings.enableFlowEnrichment;
-    toggleTab.checked = settings.enableTabInjection;
-    toggleEnrich.checked = settings.enableFlowEnrichment;
+    initialTabInjection = !!settings.enableTabInjection;
+    initialFlowEnrichment = !!settings.enableFlowEnrichment;
+    toggleTab.checked = initialTabInjection;
+    toggleEnrich.checked = initialFlowEnrichment;
 
     if (!settings.logInsightUrl || !settings.configured) {
       showSetup();

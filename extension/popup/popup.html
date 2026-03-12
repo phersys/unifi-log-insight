@@ -17,9 +17,9 @@
     <div id="setup-view" class="view" hidden>
       <p class="hint">Log Insight server address</p>
       <div class="server-row">
-        <input type="text" id="host-input" placeholder="192.168.1.50" spellcheck="false" aria-label="Log Insight server host">
+        <input type="text" id="host-input" placeholder="192.168.1.50" spellcheck="false" autocomplete="off" aria-label="Log Insight server host">
         <span class="port-sep">:</span>
-        <input type="text" id="port-input" value="8090" spellcheck="false" class="port-field" aria-label="Log Insight server port">
+        <input type="text" id="port-input" value="8090" spellcheck="false" autocomplete="off" class="port-field" aria-label="Log Insight server port">
       </div>
       <button type="button" id="connect-btn" class="btn-primary full-width">Connect</button>
       <p id="setup-error" class="error" hidden aria-live="polite"></p>
@@ -69,7 +69,7 @@
         <!-- Edit row: shown when editing or no URL set -->
         <div id="controller-edit" hidden>
           <div class="server-row compact">
-            <input type="text" id="controller-input" placeholder="10.10.10.1" spellcheck="false" aria-label="Unifi Controller Address">
+            <input type="text" id="controller-input" placeholder="10.10.10.1" spellcheck="false" autocomplete="off" aria-label="Unifi Controller Address">
             <button type="button" id="save-controller-btn" class="btn-sm">Save</button>
           </div>
           <p class="hint small">IP or hostname of your UniFi controller</p>

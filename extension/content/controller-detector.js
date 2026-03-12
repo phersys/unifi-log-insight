@@ -31,7 +31,7 @@
     }
     config = resp.data;
   } catch (e) {
-    console.debug('GET_CONFIG failed:', e);
+    console.debug('[ULI] GET_CONFIG failed:', e);
     return;
   }
 
@@ -41,7 +41,7 @@
     const resp = await chrome.runtime.sendMessage({ type: 'GET_BASE_URL' });
     if (resp && resp.ok) baseUrl = resp.url || '';
   } catch (e) {
-    console.debug('GET_BASE_URL failed:', e);
+    console.debug('[ULI] GET_BASE_URL failed:', e);
   }
 
   // Store config globally for the other content scripts
@@ -59,10 +59,10 @@ function waitForElement(selector, timeout) {
     let settled = false;
     const observer = new MutationObserver(() => {
       const found = document.querySelector(selector);
-      if (found && !settled) { settled = true; observer.disconnect(); resolve(found); }
+      if (found && !settled) { settled = true; clearTimeout(timerId); observer.disconnect(); resolve(found); }
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
 
-    setTimeout(() => { if (!settled) { settled = true; observer.disconnect(); resolve(null); } }, timeout);
+    const timerId = setTimeout(() => { if (!settled) { settled = true; observer.disconnect(); resolve(null); } }, timeout);
   });
 }

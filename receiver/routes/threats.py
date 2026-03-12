@@ -106,7 +106,7 @@ def batch_threat_lookup(req: BatchThreatRequest):
 
         # Fill in nulls for requested IPs not found in any table
         empty_result = {
-            'abuse_score': None, 'abuse_categories': None,
+            'ip': None, 'threat_score': None, 'threat_categories': None,
             'abuse_usage_type': None, 'abuse_total_reports': None,
             'abuse_is_tor': None, 'rdns': None, 'asn_name': None,
         }

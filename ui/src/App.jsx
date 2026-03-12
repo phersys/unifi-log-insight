@@ -132,21 +132,21 @@ export default function App() {
   useEffect(() => {
     if (window.parent === window) return () => {}
 
+    // Build optional origin allowlist from document.referrer.
+    // Referrer may be empty (HTTPS→HTTP downgrade strips it), so this is
+    // defense-in-depth — the primary security gate is e.source === window.parent
+    // (browser-guaranteed, not spoofable). Message types are harmless UI actions
+    // (theme toggle, navigation to validated IPs) so no data exfiltration risk.
     const allowedOrigins = new Set()
-    const fromQuery = new URLSearchParams(window.location.search).get('parentOrigin')
-    if (fromQuery) allowedOrigins.add(fromQuery)
     if (document.referrer) {
       try {
         allowedOrigins.add(new URL(document.referrer).origin)
-      } catch {
-        // Ignore malformed referrer values.
-      }
+      } catch { /* ignore malformed */ }
     }
-    if (allowedOrigins.size === 0) return () => {}
 
     const handler = (e) => {
       if (e.source !== window.parent) return
-      if (!allowedOrigins.has(e.origin)) return
+      if (allowedOrigins.size > 0 && !allowedOrigins.has(e.origin)) return
       if (!e.data || !e.data.type) return
       if (e.data.type === 'uli-theme' && (e.data.theme === 'dark' || e.data.theme === 'light')) {
         setTheme(e.data.theme)

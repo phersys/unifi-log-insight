@@ -91,7 +91,7 @@
 
   /** Pick smallest preset time range covering a timestamp's age. */
   function timeRangeForTimestamp(tsStr) {
-    if (!tsStr) return null;
+    if (!tsStr || typeof tsStr !== 'string') return null;
     const d = new Date(tsStr.replace(/\bat\b/g, ''));
     if (Number.isNaN(d.getTime())) return null;
     const ageH = (Date.now() - d.getTime()) / 3600000;
