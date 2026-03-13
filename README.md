@@ -69,9 +69,7 @@ Each version converts to **Apache License 2.0** four years after its release dat
 
 Exceptions to the BSL terms may be granted on a case-by-case basis — contact the Licensor for inquiries.
 
-<a id="app-screenshots"></a>
-
-<span style="font-size:1.4em;font-weight:bold">📸 App Screenshots</span>
+## 📸 App Screenshots
 
 #### Desktop
 
