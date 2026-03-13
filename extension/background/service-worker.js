@@ -1,7 +1,7 @@
 import '../lib/url-utils.js';
 import { DEFAULT_BASE_URL, THREAT_COLORS } from '../lib/constants.js';
 import { getSettings, saveSettings, setCache } from '../lib/storage.js';
-import { checkHealth, fetchUniFiSettings, batchThreatLookup, setBaseUrl, getBaseUrl } from '../lib/api-client.js';
+import { checkHealth, fetchUniFiSettings, batchThreatLookup, fetchTrafficStats, setBaseUrl, getBaseUrl } from '../lib/api-client.js';
 
 const SW_LOG_PREFIX = '[ULI][SW]';
 const PERMISSION_RETRY_DELAYS_MS = [0, 150, 350, 800, 1200];
@@ -268,6 +268,11 @@ async function handleMessage(msg) {
     case 'HEALTH_CHECK': {
       const health = await checkHealth(msg.url || undefined);
       return { ok: !!health, data: health };
+    }
+
+    case 'TRAFFIC_STATS': {
+      const stats = await fetchTrafficStats(msg.timeRange || '24h');
+      return { ok: !!stats, data: stats };
     }
 
     case 'BATCH_THREAT_LOOKUP': {

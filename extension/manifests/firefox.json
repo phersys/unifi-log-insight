@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "UniFi Log Insight",
+  "name": "UniFi Insights Plus",
   "version": "1.0.0",
-  "description": "Enrich UniFi Controller with threat intelligence, GeoIP data, and embedded Log Insight dashboard",
+  "description": "Enrich your UniFi Controller with threat intelligence, GeoIP data, and an embedded Log Insight dashboard",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -21,7 +21,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "UniFi Log Insight",
+    "default_title": "UniFi Insights Plus",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
@@ -31,8 +31,10 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "unifi-log-insight@jmasarweh",
-      "strict_min_version": "128.0",
-      "update_url": "https://raw.githubusercontent.com/jmasarweh/unifi-log-insight/main/extension/updates.json"
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   }
 }

@@ -101,3 +101,29 @@ export async function batchThreatLookup(ips) {
 
   return results;
 }
+
+/**
+ * Fetch traffic overview stats (total, allowed, blocked, threats, direction breakdown).
+ * Returns a slim subset of /api/stats to keep the popup lightweight.
+ */
+export async function fetchTrafficStats(timeRange = '24h') {
+  if (!baseUrl) return null;
+  try {
+    const resp = await fetch(
+      `${baseUrl}/api/stats/overview?time_range=${encodeURIComponent(timeRange)}`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return {
+      total: data.total ?? 0,
+      allowed: data.allowed ?? 0,
+      blocked: data.blocked ?? 0,
+      threats: data.threats ?? 0,
+      by_direction: data.by_direction ?? {},
+    };
+  } catch (err) {
+    console.debug('[ULI][API] fetchTrafficStats failed:', err?.message);
+    return null;
+  }
+}

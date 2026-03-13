@@ -10,9 +10,13 @@ const setupError = document.getElementById('setup-error');
 
 const statusDot = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
-const versionBadge = document.getElementById('version-badge');
+const versionFooter = document.getElementById('version-footer');
+const trafficOverview = document.getElementById('traffic-overview');
 const totalLogs = document.getElementById('total-logs');
-const blockedToday = document.getElementById('blocked-today');
+const statAllowed = document.getElementById('stat-allowed');
+const statBlocked = document.getElementById('stat-blocked');
+const statThreats = document.getElementById('stat-threats');
+const toDirections = document.getElementById('to-directions');
 
 const openDashboard = document.getElementById('open-dashboard');
 const openThreatMap = document.getElementById('open-threat-map');
@@ -104,6 +108,41 @@ function formatNumber(n) {
 
 function stripProto(url) {
   return url.replace(/^https?:\/\//, '');
+}
+
+const DIRECTION_ICONS = {
+  inbound: '\u2193', outbound: '\u2191', inter_vlan: '\u21D4',
+  nat: '\u2934\uFE0E', local: '\u27F3', vpn: '\u26E8',
+};
+
+const DIRECTION_LABELS = {
+  inbound: 'INBOUND', outbound: 'OUTBOUND', inter_vlan: 'VLAN',
+  nat: 'NAT', local: 'LOCAL', vpn: 'VPN',
+};
+
+function renderDirections(dirMap) {
+  toDirections.textContent = '';
+  const entries = Object.entries(dirMap);
+  if (entries.length === 0) {
+    toDirections.hidden = true;
+    return;
+  }
+  for (const [dir, count] of entries) {
+    const badge = document.createElement('span');
+    badge.className = `to-dir-badge to-dir-${dir}`;
+    badge.title = DIRECTION_LABELS[dir] || dir.toUpperCase();
+
+    const icon = document.createElement('span');
+    icon.textContent = DIRECTION_ICONS[dir] || '';
+
+    const val = document.createElement('span');
+    val.className = 'to-dir-count';
+    val.textContent = formatNumber(count);
+
+    badge.append(icon, val);
+    toDirections.appendChild(badge);
+  }
+  toDirections.hidden = false;
 }
 
 function sleep(ms) {
@@ -292,24 +331,40 @@ async function showConnected(settings) {
     controllerStatus.hidden = false;
   }
 
-  // Health check
+  // Health check + traffic stats (parallel)
+  const extVersion = chrome.runtime.getManifest().version;
   try {
-    const resp = await chrome.runtime.sendMessage({ type: 'HEALTH_CHECK' });
-    if (resp.ok && resp.data) {
+    const [healthResp, trafficResp] = await Promise.all([
+      chrome.runtime.sendMessage({ type: 'HEALTH_CHECK' }),
+      chrome.runtime.sendMessage({ type: 'TRAFFIC_STATS' }),
+    ]);
+
+    if (healthResp.ok && healthResp.data) {
       statusDot.className = 'status-dot connected';
       statusText.textContent = 'Connected';
-      versionBadge.textContent = `v${resp.data.version}`;
-      totalLogs.textContent = formatNumber(resp.data.total_logs);
-      blockedToday.textContent = '-';
+      versionFooter.textContent = `App: ${healthResp.data.version}  |  Extension: ${extVersion}`;
+      versionFooter.hidden = false;
     } else {
       statusDot.className = 'status-dot disconnected';
       statusText.textContent = 'Unreachable';
-      versionBadge.textContent = '';
+      versionFooter.textContent = `Extension: ${extVersion}`;
+      versionFooter.hidden = false;
+    }
+
+    if (trafficResp.ok && trafficResp.data) {
+      const t = trafficResp.data;
+      totalLogs.textContent = formatNumber(t.total);
+      statAllowed.textContent = formatNumber(t.allowed);
+      statBlocked.textContent = formatNumber(t.blocked);
+      statThreats.textContent = formatNumber(t.threats);
+      renderDirections(t.by_direction || {});
+      trafficOverview.hidden = false;
     }
   } catch {
     statusDot.className = 'status-dot disconnected';
     statusText.textContent = 'Unreachable';
-    versionBadge.textContent = '';
+    versionFooter.textContent = `Extension: ${extVersion}`;
+    versionFooter.hidden = false;
   }
 
   connectedView.hidden = false;

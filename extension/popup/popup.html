@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Log Insight</title>
+  <title>UniFi Insights Plus</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
     <div class="header">
       <img src="../icons/icon-32.png" alt="" class="logo">
-      <h1>UniFi Log Insight</h1>
+      <h1>UniFi Insights Plus</h1>
     </div>
 
     <!-- Setup View -->
@@ -30,18 +30,23 @@
       <div class="status-row">
         <span class="status-dot" id="status-dot"></span>
         <span id="status-text">Checking...</span>
-        <span id="version-badge" class="badge"></span>
       </div>
 
-      <div class="stats">
-        <div class="stat">
-          <span class="stat-value" id="total-logs">-</span>
-          <span class="stat-label">Total Logs</span>
+      <div id="traffic-overview" class="traffic-overview" hidden>
+        <div class="to-header">
+          <span class="to-title">Traffic Overview</span>
+          <span class="to-period">Last 24h</span>
         </div>
-        <div class="stat">
-          <span class="stat-value" id="blocked-today">-</span>
-          <span class="stat-label">Blocked Today</span>
+        <div class="to-total-row">
+          <span class="to-total-value" id="total-logs">-</span>
+          <span class="to-total-label">total logs</span>
         </div>
+        <div class="to-badges">
+          <span class="to-badge to-allowed" title="Allowed"><span id="stat-allowed">-</span></span>
+          <span class="to-badge to-blocked" title="Blocked"><span id="stat-blocked">-</span></span>
+          <span class="to-badge to-threats" title="Threats"><span id="stat-threats">-</span></span>
+        </div>
+        <div class="to-directions" id="to-directions"></div>
       </div>
 
       <div class="links">
@@ -88,11 +93,11 @@
       <div class="toggles">
         <label class="toggle">
           <input type="checkbox" id="toggle-tab" checked>
-          <span>Add Log Insight Tab to UniFi Controller</span>
+          <span>Add Insights Plus tab to UniFi UI</span>
         </label>
         <label class="toggle">
           <input type="checkbox" id="toggle-enrich" checked>
-          <span>Enrich Flow View</span>
+          <span>Enrich Unifi Insights flows records</span>
         </label>
       </div>
 
@@ -102,6 +107,8 @@
       </div>
 
       <button type="button" id="disconnect-btn" class="btn-reset">Reset Extension</button>
+
+      <div id="version-footer" class="version-footer" hidden></div>
     </div>
 
     <details class="debug-details">

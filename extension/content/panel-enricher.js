@@ -227,8 +227,8 @@ window.addEventListener('uli-ready', async function () {
       }
     }
 
-    const logoColor = isDark ? '#60a5fa' : '#006EFF';
-    const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="${logoColor}"/><text x="16" y="22.5" text-anchor="middle" font-family="Arial,sans-serif" font-weight="bold" font-size="20" fill="#fff">U</text></svg>`;
+    const logoColor = isDark ? '#2dd4bf' : '#14B8A6';
+    const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="16" viewBox="0 0 100 116" fill="none"><path d="M 29 68 C 22 62,16 53,16 41 A 34 34 0 1 1 84 41 C 84 53,78 62,71 68 Z" fill="${logoColor}" fill-opacity="0.12"/><path d="M 29 68 C 22 62,16 53,16 41 A 34 34 0 1 1 84 41 C 84 53,78 62,71 68" stroke="${logoColor}" stroke-width="5.2" stroke-linecap="round" fill="none"/><path d="M 28 34 A 18 18 0 0 1 44 22" stroke="${logoColor}" stroke-width="4.8" stroke-linecap="round" fill="none" opacity="0.7"/><line x1="28" y1="75" x2="72" y2="75" stroke="${logoColor}" stroke-width="5.2" stroke-linecap="round"/><line x1="36" y1="84" x2="64" y2="84" stroke="${logoColor}" stroke-width="5.2" stroke-linecap="round"/><text x="50" y="110" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="800" font-size="19" letter-spacing="0.16em" fill="${isDark ? '#14b8a6' : '#0D9488'}">PLUS</text></svg>`;
 
     shadow.innerHTML =
       '<style>' +
@@ -246,10 +246,10 @@ window.addEventListener('uli-ready', async function () {
       `.score-note{color:${textSecondary};font-size:12px;margin-left:4px}` +
       '.dot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle}' +
       '.dot.no-data{background:#9ca3af}' +
-      `.link{display:block;color:${isDark ? '#60a5fa' : '#006EFF'};font-size:12px;cursor:pointer;text-decoration:none;margin-top:6px;text-align:right}` +
+      `.link{display:block;color:${isDark ? '#2dd4bf' : '#14B8A6'};font-size:12px;cursor:pointer;text-decoration:none;margin-top:6px;text-align:right}` +
       '.link:hover{text-decoration:underline}' +
       '</style>' +
-      `<div class="header"><span class="header-logo">${logoSvg}</span>Log Insight</div>` +
+      `<div class="header"><span class="header-logo">${logoSvg}</span>Insights Plus</div>` +
       rows.join('') +
       '<a class="link" data-uli-nav>View Traffic &#8599;</a>';
 

@@ -1,6 +1,6 @@
 /**
- * Feature 1: Inject a "Log Insight" tab into the UniFi Controller portal nav.
- * Clicking it embeds the Log Insight app in the UniFi content area below the nav.
+ * Feature 1: Inject a "Insights Plus" tab into the UniFi Controller portal nav.
+ * Clicking it embeds the Insights Plus app in the UniFi content area below the nav.
  *
  * Activated by 'uli-ready' event from controller-detector.js.
  * Runs in content script isolated world (has chrome.runtime access).
@@ -32,15 +32,15 @@ window.addEventListener('uli-ready', async function () {
   try {
     logInsightOrigin = new URL(logInsightUrl).origin;
   } catch (e) {
-    console.error('Invalid Log Insight URL:', logInsightUrl, e);
+    console.error('Invalid Insights Plus URL:', logInsightUrl, e);
     return;
   }
   // Inline SVG data URIs — eliminates web_accessible_resources and prevents
   // external sites from fingerprinting the extension via icon probing.
-  const _iconSvg = (fill) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="${fill}"/><text x="16" y="22.5" text-anchor="middle" font-family="Arial,sans-serif" font-weight="bold" font-size="20" fill="#fff">U</text></svg>`)}`;
+  const _iconSvg = (color, textColor) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 116" fill="none"><path d="M 29 68 C 22 62,16 53,16 41 A 34 34 0 1 1 84 41 C 84 53,78 62,71 68 Z" fill="${color}" fill-opacity="0.12"/><path d="M 29 68 C 22 62,16 53,16 41 A 34 34 0 1 1 84 41 C 84 53,78 62,71 68" stroke="${color}" stroke-width="5.2" stroke-linecap="round" fill="none"/><path d="M 28 34 A 18 18 0 0 1 44 22" stroke="${color}" stroke-width="4.8" stroke-linecap="round" fill="none" opacity="0.7"/><line x1="28" y1="75" x2="72" y2="75" stroke="${color}" stroke-width="5.2" stroke-linecap="round"/><line x1="36" y1="84" x2="64" y2="84" stroke="${color}" stroke-width="5.2" stroke-linecap="round"/><text x="50" y="110" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="800" font-size="19" letter-spacing="0.16em" fill="${textColor || color}">PLUS</text></svg>`)}`;
   const iconUrlGreyLight = _iconSvg('#6b7280');
   const iconUrlGreyDark = _iconSvg('#4b5563');
-  const iconUrlBlue = _iconSvg('#3b82f6');
+  const iconUrlBlue = _iconSvg('#14b8a6', '#0d9488');
 
   /** Return the correct inactive icon URL for the current theme. */
   function inactiveIconUrl() {
@@ -222,19 +222,19 @@ window.addEventListener('uli-ready', async function () {
       img.src = inactiveIconUrl();
       img.width = 22;
       img.height = 22;
-      img.alt = 'Log Insight';
+      img.alt = 'Insights Plus';
       img.style.cssText = 'border-radius:4px;margin:3px 5px 3px 3px';
       iconContainer.insertBefore(img, iconContainer.firstChild);
 
       // Update the title text
       const titleDiv = iconContainer.querySelector('.title');
       if (titleDiv) {
-        titleDiv.textContent = 'Log Insight';
+        titleDiv.textContent = 'Insights Plus';
       } else {
         // Create title div if it doesn't exist
         const title = document.createElement('div');
         title.className = 'title';
-        title.textContent = 'Log Insight';
+        title.textContent = 'Insights Plus';
         iconContainer.appendChild(title);
       }
     }
