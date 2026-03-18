@@ -25,12 +25,16 @@ export default function SettingsMCP() {
   const [originsText, setOriginsText] = useState('')
   const [scopes, setScopes] = useState([])
   const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState(null)
   const [auditEntries, setAuditEntries] = useState([])
   const [auditTotal, setAuditTotal] = useState(0)
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditLoaded, setAuditLoaded] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+
+  // Per-card inline status
+  const [serverStatus, setServerStatus] = useState(null) // 'saved' | 'error' | { type, text }
+  const [tokenStatus, setTokenStatus] = useState(null)   // { type: 'saved'|'error', text }
+  const [auditStatus, setAuditStatus] = useState(null)   // { type: 'error', text }
 
   const [tokenName, setTokenName] = useState('')
   const [tokenScopes, setTokenScopes] = useState(new Set())
@@ -99,14 +103,14 @@ export default function SettingsMCP() {
       setOriginsText((settingsData.allowed_origins || []).join('\n'))
       setScopes(scopesData.scopes || [])
     } catch (e) {
-      setMessage({ type: 'error', text: e.message })
+      setServerStatus({ type: 'error', text: e.message })
     }
   }
 
   async function handleSave() {
     if (!draft) return
     setSaving(true)
-    setMessage(null)
+    setServerStatus(null)
     try {
       const allowedOrigins = originsText
         .split(/\r?\n|,/)
@@ -116,10 +120,9 @@ export default function SettingsMCP() {
       await updateMcpSettings(payload)
       setSettings(payload)
       setDraft(payload)
-      setMessage({ type: 'success', text: 'MCP settings saved' })
-      setTimeout(() => setMessage(null), 3000)
+      setServerStatus('saved')
     } catch (e) {
-      setMessage({ type: 'error', text: e.message })
+      setServerStatus({ type: 'error', text: e.message })
     } finally {
       setSaving(false)
     }
@@ -127,15 +130,14 @@ export default function SettingsMCP() {
 
   async function savePartial(partial) {
     setSaving(true)
-    setMessage(null)
+    setServerStatus(null)
     try {
       await updateMcpSettings(partial)
       setSettings(prev => ({ ...prev, ...partial }))
       setDraft(prev => ({ ...prev, ...partial }))
-      setMessage({ type: 'success', text: 'MCP settings saved' })
-      setTimeout(() => setMessage(null), 3000)
+      setServerStatus('saved')
     } catch (e) {
-      setMessage({ type: 'error', text: e.message })
+      setServerStatus({ type: 'error', text: e.message })
       throw e
     } finally {
       setSaving(false)
@@ -153,11 +155,11 @@ export default function SettingsMCP() {
 
   async function handleCreateToken() {
     if (tokenScopes.size === 0) {
-      setMessage({ type: 'error', text: 'Select at least one scope' })
+      setTokenStatus({ type: 'error', text: 'Select at least one scope' })
       return
     }
     setCreating(true)
-    setMessage(null)
+    setTokenStatus(null)
     try {
       const result = await createToken({
         name: tokenName.trim() || 'MCP Token',
@@ -169,10 +171,9 @@ export default function SettingsMCP() {
       setShowTokenModal(true)
       setTokenName('')
       setTokenScopes(new Set())
-      setMessage({ type: 'success', text: 'Token created' })
-      setTimeout(() => setMessage(null), 3000)
+      setTokenStatus({ type: 'saved', text: 'Token created' })
     } catch (e) {
-      setMessage({ type: 'error', text: e.message })
+      setTokenStatus({ type: 'error', text: e.message })
     } finally {
       setCreating(false)
     }
@@ -181,25 +182,25 @@ export default function SettingsMCP() {
   async function handleRevoke(tokenId) {
     if (!tokenId) return
     if (!confirm('Revoke this token? This cannot be undone.')) return
-    setMessage(null)
+    setTokenStatus(null)
     try {
       await revokeToken(tokenId)
-      setMessage({ type: 'success', text: 'Token revoked' })
-      setTimeout(() => setMessage(null), 3000)
+      setTokenStatus({ type: 'saved', text: 'Token revoked' })
     } catch (e) {
-      setMessage({ type: 'error', text: e.message })
+      setTokenStatus({ type: 'error', text: e.message })
     }
   }
 
   async function loadAudit() {
     setAuditLoading(true)
+    setAuditStatus(null)
     try {
       const data = await fetchMcpAudit(200, 0)
       setAuditEntries(data.entries || [])
       setAuditTotal(data.total || 0)
       setAuditLoaded(true)
     } catch (e) {
-      setMessage({ type: 'error', text: e.message })
+      setAuditStatus({ type: 'error', text: e.message })
     } finally {
       setAuditLoading(false)
     }
@@ -211,16 +212,6 @@ export default function SettingsMCP() {
 
   return (
     <div className="space-y-8">
-      {message && (
-        <div className={`text-sm px-3 py-2 rounded border ${
-          message.type === 'error'
-            ? 'border-red-500/40 text-red-300 bg-red-500/10'
-            : 'border-green-500/40 text-green-300 bg-green-500/10'
-        }`}>
-          {message.text}
-        </div>
-      )}
-
       {/* ── MCP Server ─────────────────────────────────────────── */}
       <section>
         <h2 className="text-base font-semibold text-gray-300 mb-3 uppercase tracking-wider">
@@ -333,7 +324,11 @@ export default function SettingsMCP() {
           <div className="border-t border-gray-800" />
 
           <div className="px-5 py-3 flex items-center justify-between">
-            <p className="text-xs text-gray-500">MCP endpoint: /api/mcp</p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-gray-500">MCP endpoint: /api/mcp</p>
+              {serverStatus === 'saved' && <span className="text-sm text-emerald-400">Settings saved</span>}
+              {serverStatus?.type === 'error' && <span className="text-sm text-red-400">{serverStatus.text}</span>}
+            </div>
             <button
               onClick={handleSave}
               disabled={!canSave || saving}
@@ -399,7 +394,14 @@ export default function SettingsMCP() {
           <div className="border-t border-gray-800" />
 
           <div className="p-5">
-            <p className="text-sm font-medium text-gray-200 mb-3">Active tokens</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-gray-200">Active tokens</p>
+              {tokenStatus && (
+                <span className={`text-sm ${tokenStatus.type === 'saved' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {tokenStatus.text}
+                </span>
+              )}
+            </div>
             <TokenList
               tokens={tokens}
               onRevoke={(id) => handleRevoke(id)}
@@ -560,11 +562,16 @@ export default function SettingsMCP() {
         </h2>
         <div className="rounded-lg border border-gray-700 bg-gray-950 p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">
-              {auditLoaded
-                ? `Showing latest ${auditEntries.length} of ${auditTotal}`
-                : 'Audit log loads on demand'}
-            </p>
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-gray-500">
+                {auditLoaded
+                  ? `Showing latest ${auditEntries.length} of ${auditTotal}`
+                  : 'Audit log loads on demand'}
+              </p>
+              {auditStatus?.type === 'error' && (
+                <span className="text-sm text-red-400">{auditStatus.text}</span>
+              )}
+            </div>
             <button
               onClick={loadAudit}
               disabled={auditLoading}

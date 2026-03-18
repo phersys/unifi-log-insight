@@ -18,6 +18,7 @@ from routes import setup as setup_routes
 from routes import unifi as unifi_routes
 from routes import health as health_routes
 from routes import threats as threats_routes
+from routes.auth import validate_token_with_effective_scopes
 
 logger = logging.getLogger('api.mcp')
 
@@ -104,13 +105,15 @@ def _lookup_token(token: str) -> dict | None:
     """
     if not token:
         return None
-    from routes.auth import validate_token_with_effective_scopes
     return validate_token_with_effective_scopes(token)
 
 
 def _require_scope(token_info: dict, required: list[str]) -> None:
     """Check that the token's effective scopes include all required scopes."""
-    granted = token_info.get('effective_scopes') or set(token_info.get('scopes') or [])
+    # Explicit None check: empty effective_scopes (set()) means *no* permissions
+    # and must NOT fall through to raw scopes — that would be privilege escalation.
+    es = token_info.get('effective_scopes')
+    granted = set(es) if es is not None else set(token_info.get('scopes') or [])
     if not set(required).issubset(granted):
         raise PermissionError("Missing required scope")
 
@@ -127,12 +130,24 @@ def _audit_retention_days() -> int:
         return 10
 
 
+_SENSITIVE_PARAM_KEYS = frozenset({
+    'password', 'secret', 'token', 'api_key', 'credentials', 'ssn', 'credit_card',
+})
+
+
+def _sanitize_params(params: dict | None) -> dict:
+    """Redact sensitive keys from params before audit logging."""
+    if not params:
+        return {}
+    return {k: ('***' if k.lower() in _SENSITIVE_PARAM_KEYS else v) for k, v in params.items()}
+
+
 def _write_audit(token_info: dict, tool_name: str, scope: str, params: dict | None,
                  success: bool, error: str | None = None) -> None:
     if not _audit_enabled():
         return
-    token_id = token_info.get('token_id') if isinstance(token_info, dict) else token_info
-    user_id = token_info.get('owner_user_id') if isinstance(token_info, dict) else None
+    token_id = token_info.get('token_id')
+    user_id = token_info.get('owner_user_id')
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -141,10 +156,12 @@ def _write_audit(token_info: dict, tool_name: str, scope: str, params: dict | No
                    VALUES (%s, %s, 'api_call', %s, NOW())""",
                 [user_id, token_id, json.dumps({'tool_name': tool_name, 'scope': scope,
                                         'success': success, 'error': error,
-                                        'params': params or {}}, default=str)]
+                                        'params': _sanitize_params(params)}, default=str)]
             )
         conn.commit()
     except Exception:
+        # Intentionally swallowed: audit is non-critical and must not break MCP tool calls.
+        # The exception is still logged for observability.
         conn.rollback()
         logger.exception("Failed to write audit entry")
     finally:

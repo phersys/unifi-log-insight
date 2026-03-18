@@ -36,14 +36,15 @@ export async function getApiToken() {
   try {
     const result = await chrome.storage.local.get('apiToken');
     return result.apiToken || '';
-  } catch {
+  } catch (err) {
+    console.error('getApiToken failed:', err);
     return '';
   }
 }
 
-export async function saveApiToken(token) {
+export async function saveApiToken(token, { validated = true } = {}) {
   try {
-    await chrome.storage.local.set({ apiToken: token });
+    await chrome.storage.local.set({ apiToken: token, apiTokenValidated: validated });
     return true;
   } catch (err) {
     console.error('saveApiToken failed:', err);
@@ -51,9 +52,20 @@ export async function saveApiToken(token) {
   }
 }
 
+export async function getApiTokenValidated() {
+  try {
+    const result = await chrome.storage.local.get('apiTokenValidated');
+    // Default to true for tokens saved before this field existed
+    return result.apiTokenValidated !== false;
+  } catch (err) {
+    console.error('getApiTokenValidated failed:', err);
+    return true;
+  }
+}
+
 export async function clearApiToken() {
   try {
-    await chrome.storage.local.remove('apiToken');
+    await chrome.storage.local.remove(['apiToken', 'apiTokenValidated']);
   } catch (err) {
     console.error('clearApiToken failed:', err);
   }

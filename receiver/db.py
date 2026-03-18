@@ -461,9 +461,11 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action)",
             "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)",
             # Auth: system_config seed entries
-            """INSERT INTO system_config (key, value, updated_at) VALUES ('auth_enabled', 'false', NOW()) ON CONFLICT (key) DO NOTHING""",
-            """INSERT INTO system_config (key, value, updated_at) VALUES ('auth_session_ttl_hours', '168', NOW()) ON CONFLICT (key) DO NOTHING""",
-            """INSERT INTO system_config (key, value, updated_at) VALUES ('audit_log_retention_days', '90', NOW()) ON CONFLICT (key) DO NOTHING""",
+            # Seed values use ::jsonb casts to store proper JSON types (boolean/number),
+            # not strings — get_config() returns Python bool/int directly.
+            """INSERT INTO system_config (key, value, updated_at) VALUES ('auth_enabled', 'false'::jsonb, NOW()) ON CONFLICT (key) DO NOTHING""",
+            """INSERT INTO system_config (key, value, updated_at) VALUES ('auth_session_ttl_hours', '168'::jsonb, NOW()) ON CONFLICT (key) DO NOTHING""",
+            """INSERT INTO system_config (key, value, updated_at) VALUES ('audit_log_retention_days', '90'::jsonb, NOW()) ON CONFLICT (key) DO NOTHING""",
             # Auth: migrate mcp_tokens data into api_tokens (guarded — table may not exist)
             """DO $$ BEGIN
                 IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'mcp_tokens' AND table_schema = 'public') THEN
@@ -473,7 +475,9 @@ class Database:
                     WHERE NOT EXISTS (SELECT 1 FROM api_tokens WHERE api_tokens.id = mcp_tokens.id);
                 END IF;
             END $$""",
-            # Auth: migrate mcp_audit data into audit_log (guarded — table may not exist)
+            # Auth: migrate mcp_audit data into audit_log (guarded — table may not exist).
+            # Dedup uses created_at+token_id which is sufficient for this one-time migration
+            # (source table is renamed to _mcp_audit_backup afterwards and never re-run).
             """DO $$ BEGIN
                 IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'mcp_audit' AND table_schema = 'public') THEN
                     INSERT INTO audit_log (token_id, action, detail, created_at)

@@ -11,6 +11,8 @@ export default function Login({ onSuccess, isHttps }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    // Password is intentionally not trimmed — leading/trailing whitespace may be
+    // part of the password. Only username is trimmed.
     if (!username.trim() || !password) return
     setError('')
     setLoading(true)
@@ -54,6 +56,7 @@ export default function Login({ onSuccess, isHttps }) {
                 value={username}
                 onChange={e => setUsername(e.target.value)}
                 placeholder="Username"
+                aria-label="Username"
                 disabled={!isHttps || loading}
                 autoComplete="username"
                 className={`${INPUT_CLS} disabled:opacity-50`}
@@ -63,6 +66,7 @@ export default function Login({ onSuccess, isHttps }) {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="Password"
+                aria-label="Password"
                 disabled={!isHttps || loading}
                 autoComplete="current-password"
                 className={`${INPUT_CLS} disabled:opacity-50`}

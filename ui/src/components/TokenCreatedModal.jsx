@@ -1,14 +1,45 @@
 import { createPortal } from 'react-dom'
-import { useEffect, useId, useRef } from 'react'
+import { useCallback, useEffect, useId, useRef } from 'react'
 import CopyButton from './CopyButton'
 
 export default function TokenCreatedModal({ token, title = 'Token Created', onClose }) {
   const titleId = useId()
   const dialogRef = useRef(null)
+  const previousFocusRef = useRef(null)
 
+  // Document-level Escape listener + focus management
   useEffect(() => {
-    if (token) dialogRef.current?.focus()
-  }, [token])
+    if (!token) return
+    previousFocusRef.current = document.activeElement
+    dialogRef.current?.focus()
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      previousFocusRef.current?.focus()
+    }
+  }, [token, onClose])
+
+  // Focus trap: cycle Tab within the dialog
+  const handleKeyDown = useCallback((e) => {
+    if (e.key !== 'Tab') return
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const focusable = dialog.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )
+    if (focusable.length === 0) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus() }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus() }
+    }
+  }, [])
 
   if (!token) return null
   return createPortal(
@@ -21,7 +52,7 @@ export default function TokenCreatedModal({ token, title = 'Token Created', onCl
         aria-labelledby={titleId}
         className="bg-gray-950 border border-gray-700 rounded-lg shadow-xl max-w-lg w-full mx-4 outline-none"
         onClick={e => e.stopPropagation()}
-        onKeyDown={e => e.key === 'Escape' && onClose()}
+        onKeyDown={handleKeyDown}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
           <span id={titleId} className="text-sm font-semibold text-gray-200">{title}</span>

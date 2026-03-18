@@ -1,7 +1,7 @@
 /**
  * Shared active-token list used by SettingsAPI and SettingsMCP.
  */
-export default function TokenList({ tokens, onRevoke, formatPrefix }) {
+export default function TokenList({ tokens = [], onRevoke, formatPrefix }) {
   return (
     <div className="space-y-2">
       {tokens.length === 0 && (
@@ -15,7 +15,7 @@ export default function TokenList({ tokens, onRevoke, formatPrefix }) {
           <div className="min-w-0">
             <p className="text-base text-gray-200 font-medium truncate">{t.name}</p>
             <p className="text-xs text-gray-500 font-mono truncate">
-              {formatPrefix ? formatPrefix(t) : `${t.token_prefix}…`} · {t.client_type} · {t.scopes?.join(', ') || 'no scopes'}
+              {formatPrefix ? formatPrefix(t) : `${t.token_prefix ?? ''}…`} · {t.client_type} · {t.scopes?.join(', ') || 'no scopes'}
             </p>
             <p className="text-xs text-gray-600">
               Created {t.created_at ? new Date(t.created_at).toLocaleString() : 'unknown'}
@@ -28,9 +28,10 @@ export default function TokenList({ tokens, onRevoke, formatPrefix }) {
             }`}>
               {t.disabled ? 'Disabled' : 'Active'}
             </span>
-            {!t.disabled && (
+            {!t.disabled && onRevoke && (
               <button
                 onClick={() => onRevoke(t.id, t.name)}
+                aria-label={`Revoke ${t.name || t.id}`}
                 className="px-2 py-1 text-sm font-semibold rounded bg-teal-600 hover:bg-teal-500 text-white transition-colors"
               >
                 Revoke

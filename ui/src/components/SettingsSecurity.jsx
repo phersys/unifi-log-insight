@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { fetchAuthStatus, fetchAuthMe, authChangePassword, authSetup, updateSessionTtl } from '../api'
 
 const INPUT_CLS = 'w-full px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-teal-500'
@@ -7,7 +7,6 @@ export default function SettingsSecurity({ onAuthEnabled }) {
   const [authStatus, setAuthStatus] = useState(null)
   const [me, setMe] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [message, setMessage] = useState(null)
 
   // Change password
   const [showPwChange, setShowPwChange] = useState(false)
@@ -15,24 +14,21 @@ export default function SettingsSecurity({ onAuthEnabled }) {
   const [newPw, setNewPw] = useState('')
   const [confirmPw, setConfirmPw] = useState('')
   const [pwSaving, setPwSaving] = useState(false)
+  const [pwStatus, setPwStatus] = useState(null) // { type: 'saved'|'error', text }
 
   // Enable auth (first-user setup)
   const [setupUser, setSetupUser] = useState('admin')
   const [setupPw, setSetupPw] = useState('')
   const [setupConfirm, setSetupConfirm] = useState('')
   const [setupSaving, setSetupSaving] = useState(false)
+  const [setupStatus, setSetupStatus] = useState(null) // { type: 'saved'|'error', text }
 
   // Session duration
   const [sessionTtl, setSessionTtl] = useState(168)
   const [ttlSaving, setTtlSaving] = useState(false)
-
-  const flashTimer = useRef(null)
+  const [ttlStatus, setTtlStatus] = useState(null) // 'saved' | 'error'
 
   useEffect(() => { reload() }, [])
-
-  useEffect(() => {
-    return () => clearTimeout(flashTimer.current)
-  }, [])
 
   async function reload() {
     setLoading(true)
@@ -51,24 +47,21 @@ export default function SettingsSecurity({ onAuthEnabled }) {
     }
   }
 
-  function flash(text, type = 'info') {
-    setMessage({ text, type })
-    clearTimeout(flashTimer.current)
-    flashTimer.current = setTimeout(() => setMessage(null), 4000)
-  }
-
   async function handleChangePassword(e) {
     e.preventDefault()
-    if (newPw !== confirmPw) { flash('Passwords do not match', 'error'); return }
-    if (newPw.length < 8) { flash('Password must be at least 8 characters', 'error'); return }
+    setPwStatus(null)
+    if (newPw !== confirmPw) { setPwStatus({ type: 'error', text: 'Passwords do not match' }); return }
+    if (newPw.length < 8) { setPwStatus({ type: 'error', text: 'Password must be at least 8 characters' }); return }
     setPwSaving(true)
     try {
       await authChangePassword(currentPw, newPw)
-      flash('Password changed successfully', 'success')
+      setPwStatus({ type: 'saved', text: 'Password changed' })
       setShowPwChange(false)
-      setCurrentPw(''); setNewPw(''); setConfirmPw('')
+      setCurrentPw('')
+      setNewPw('')
+      setConfirmPw('')
     } catch (err) {
-      flash(err.message || 'Failed to change password', 'error')
+      setPwStatus({ type: 'error', text: err.message || 'Failed to change password' })
     } finally {
       setPwSaving(false)
     }
@@ -76,18 +69,20 @@ export default function SettingsSecurity({ onAuthEnabled }) {
 
   async function handleEnableAuth(e) {
     e.preventDefault()
-    if (setupPw !== setupConfirm) { flash('Passwords do not match', 'error'); return }
-    if (setupPw.length < 8) { flash('Password must be at least 8 characters', 'error'); return }
-    if (!setupUser.trim()) { flash('Username is required', 'error'); return }
+    setSetupStatus(null)
+    if (setupPw !== setupConfirm) { setSetupStatus({ type: 'error', text: 'Passwords do not match' }); return }
+    if (setupPw.length < 8) { setSetupStatus({ type: 'error', text: 'Password must be at least 8 characters' }); return }
+    if (!setupUser.trim()) { setSetupStatus({ type: 'error', text: 'Username is required' }); return }
     setSetupSaving(true)
     try {
       await authSetup(setupUser.trim(), setupPw)
-      flash('Authentication enabled — admin account created', 'success')
-      setSetupUser(''); setSetupPw(''); setSetupConfirm('')
+      setSetupUser('')
+      setSetupPw('')
+      setSetupConfirm('')
       onAuthEnabled?.()
       reload()
     } catch (err) {
-      flash(err.message || 'Setup failed', 'error')
+      setSetupStatus({ type: 'error', text: err.message || 'Setup failed' })
     } finally {
       setSetupSaving(false)
     }
@@ -95,14 +90,23 @@ export default function SettingsSecurity({ onAuthEnabled }) {
 
   async function handleSaveSessionTtl() {
     setTtlSaving(true)
+    setTtlStatus(null)
     try {
       await updateSessionTtl(sessionTtl)
-      flash('Session duration updated', 'success')
-    } catch (err) {
-      flash(err.message || 'Failed to update session duration', 'error')
+      setTtlStatus('saved')
+    } catch {
+      setTtlStatus('error')
     } finally {
       setTtlSaving(false)
     }
+  }
+
+  function handleCancelPwChange() {
+    setShowPwChange(false)
+    setCurrentPw('')
+    setNewPw('')
+    setConfirmPw('')
+    setPwStatus(null)
   }
 
   if (loading) return (
@@ -121,16 +125,6 @@ export default function SettingsSecurity({ onAuthEnabled }) {
 
   return (
     <div className="space-y-8">
-      {message && (
-        <div className={`px-4 py-2 rounded text-sm ${
-          message.type === 'error' ? 'bg-red-900/40 text-red-300 border border-red-700/50' :
-          message.type === 'success' ? 'bg-green-900/40 text-green-300 border border-green-700/50' :
-          'bg-blue-900/40 text-blue-300 border border-blue-700/50'
-        }`}>
-          {message.text}
-        </div>
-      )}
-
       <section>
         <h2 className="text-base font-semibold text-gray-300 mb-3 uppercase tracking-wider">Authentication</h2>
         <div className="rounded-lg border border-gray-700 bg-gray-950">
@@ -178,13 +172,18 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                       autoComplete="new-password"
                       className={`${INPUT_CLS} disabled:opacity-50`}
                     />
-                    <button
-                      type="submit"
-                      disabled={setupSaving || !setupUser.trim() || setupPw.length < 8 || setupPw !== setupConfirm}
-                      className="px-4 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {setupSaving ? 'Creating account...' : 'Enable Authentication'}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="submit"
+                        disabled={setupSaving || !setupUser.trim() || setupPw.length < 8 || setupPw !== setupConfirm}
+                        className="px-4 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {setupSaving ? 'Creating account...' : 'Enable Authentication'}
+                      </button>
+                      {setupStatus?.type === 'error' && (
+                        <span className="text-sm text-red-400">{setupStatus.text}</span>
+                      )}
+                    </div>
                   </form>
                 ) : (
                   <div className="p-3 rounded bg-amber-500/10 border border-amber-500/30 text-sm text-amber-400">
@@ -204,12 +203,17 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                   <span className="text-gray-200 font-medium">{me.username}</span>
                   <span className="px-1.5 py-0.5 text-xs rounded bg-gray-800 text-gray-400">{me.role || 'user'}</span>
                 </div>
-                <button
-                  onClick={() => setShowPwChange(!showPwChange)}
-                  className="text-sm text-teal-500 hover:text-teal-400 transition-colors"
-                >
-                  Change password
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => { setShowPwChange(!showPwChange); setPwStatus(null) }}
+                    className="text-sm text-teal-500 hover:text-teal-400 transition-colors"
+                  >
+                    Change password
+                  </button>
+                  {!showPwChange && pwStatus?.type === 'saved' && (
+                    <span className="text-sm text-emerald-400">{pwStatus.text}</span>
+                  )}
+                </div>
 
                 {showPwChange && (
                   <form onSubmit={handleChangePassword} className="mt-3 space-y-3 max-w-sm">
@@ -238,7 +242,7 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                       required
                       className={INPUT_CLS}
                     />
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-3">
                       <button
                         type="submit"
                         disabled={pwSaving}
@@ -248,11 +252,14 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setShowPwChange(false); setCurrentPw(''); setNewPw(''); setConfirmPw('') }}
+                        onClick={handleCancelPwChange}
                         className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
                       >
                         Cancel
                       </button>
+                      {pwStatus?.type === 'error' && (
+                        <span className="text-sm text-red-400">{pwStatus.text}</span>
+                      )}
                     </div>
                   </form>
                 )}
@@ -265,30 +272,44 @@ export default function SettingsSecurity({ onAuthEnabled }) {
       {authEnabled && (
         <section>
           <h2 className="text-base font-semibold text-gray-300 mb-3 uppercase tracking-wider">Session Duration</h2>
-          <div className="rounded-lg border border-gray-700 bg-gray-950 p-5">
-            <div className="flex items-center gap-3 max-w-sm">
-              <select
-                value={sessionTtl}
-                onChange={e => setSessionTtl(Number(e.target.value))}
-                className="px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-gray-200 focus:outline-none focus:border-teal-500"
-              >
-                <option value={1}>1 hour</option>
-                <option value={4}>4 hours</option>
-                <option value={8}>8 hours</option>
-                <option value={24}>1 day</option>
-                <option value={72}>3 days</option>
-                <option value={168}>7 days</option>
-                <option value={720}>30 days</option>
-              </select>
-              <button
-                onClick={handleSaveSessionTtl}
-                disabled={ttlSaving || sessionTtl === authStatus?.session_ttl_hours}
-                className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {ttlSaving ? 'Saving...' : 'Save'}
-              </button>
+          <div className="rounded-lg border border-gray-700 bg-gray-950">
+            <div className="p-5">
+              <div className="flex items-center gap-3 max-w-sm">
+                <select
+                  value={sessionTtl}
+                  onChange={e => { setSessionTtl(Number(e.target.value)); setTtlStatus(null) }}
+                  className="px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-gray-200 focus:outline-none focus:border-teal-500"
+                >
+                  <option value={1}>1 hour</option>
+                  <option value={4}>4 hours</option>
+                  <option value={8}>8 hours</option>
+                  <option value={24}>1 day</option>
+                  <option value={72}>3 days</option>
+                  <option value={168}>7 days</option>
+                  <option value={720}>30 days</option>
+                </select>
+                <button
+                  onClick={handleSaveSessionTtl}
+                  disabled={ttlSaving || sessionTtl === authStatus?.session_ttl_hours}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    sessionTtl !== authStatus?.session_ttl_hours
+                      ? 'bg-teal-600 hover:bg-teal-500 text-white'
+                      : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  {ttlSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-gray-500">How long sessions remain valid before requiring re-login. Changes apply to new sessions only.</p>
             </div>
-            <p className="mt-2 text-sm text-gray-500">How long sessions remain valid before requiring re-login. Changes apply to new sessions only.</p>
+            <div className="border-t border-gray-800" />
+            <div className="px-5 py-3 flex items-center justify-between">
+              <div>
+                {ttlStatus === 'saved' && <span className="text-sm text-emerald-400">Session duration updated</span>}
+                {ttlStatus === 'error' && <span className="text-sm text-red-400">Failed to save</span>}
+              </div>
+              <div />
+            </div>
           </div>
         </section>
       )}

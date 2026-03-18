@@ -1,6 +1,7 @@
 """Authentication endpoints."""
 
 import hashlib
+import hmac as _hmac
 import ipaddress
 import json
 import logging
@@ -96,6 +97,9 @@ def _has_users() -> bool:
 
 # ── Rate Limiting ────────────────────────────────────────────────────────────
 
+# In-memory rate limiter is intentional: this app runs as a single uvicorn worker
+# inside a single Docker container, so process-local state is sufficient.
+# Redis/DB-backed rate limiting would be overengineered for this deployment model.
 _login_attempts = {}  # ip -> [timestamps]
 _LOGIN_RATE_LIMIT = 5
 _LOGIN_RATE_WINDOW = 60  # seconds
@@ -206,8 +210,9 @@ def _validate_api_token(token: str) -> dict | None:
     """Validate Bearer API token. Returns token+user dict or None."""
     if not token:
         return None
-    import hmac as _hmac
-    prefix = token[8:16] if len(token) > 16 else token[:8]
+    # Extract prefix from random portion (after underscore) to match token creation logic.
+    random_part = token.split('_', 1)[1] if '_' in token else token
+    prefix = random_part[:8]
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

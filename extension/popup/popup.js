@@ -300,16 +300,28 @@ async function showConnected(settings) {
   const baseUrl = settings.logInsightUrl;
   const extVersion = chrome.runtime.getManifest().version;
 
-  // Check if auth is required and no token is configured
+  // Check if auth is required and no token is configured.
+  // Use allSettled so one failure doesn't discard the others.
   let healthResp = {}, trafficResp = {}, tokenResp = {};
-  try {
-    [healthResp, trafficResp, tokenResp] = await Promise.all([
-      chrome.runtime.sendMessage({ type: 'HEALTH_CHECK' }),
-      chrome.runtime.sendMessage({ type: 'TRAFFIC_STATS' }),
-      chrome.runtime.sendMessage({ type: 'GET_API_TOKEN' }),
-    ]);
-  } catch (err) {
-    popupWarn('showConnected fetch failed:', err?.message);
+  const [healthResult, trafficResult, tokenResult] = await Promise.allSettled([
+    chrome.runtime.sendMessage({ type: 'HEALTH_CHECK' }),
+    chrome.runtime.sendMessage({ type: 'TRAFFIC_STATS' }),
+    chrome.runtime.sendMessage({ type: 'GET_API_TOKEN' }),
+  ]);
+  if (healthResult.status === 'fulfilled') {
+    healthResp = healthResult.value || {};
+  } else {
+    popupWarn('HEALTH_CHECK failed:', healthResult.reason?.message);
+  }
+  if (trafficResult.status === 'fulfilled') {
+    trafficResp = trafficResult.value || {};
+  } else {
+    popupWarn('TRAFFIC_STATS failed:', trafficResult.reason?.message);
+  }
+  if (tokenResult.status === 'fulfilled') {
+    tokenResp = tokenResult.value || {};
+  } else {
+    popupWarn('GET_API_TOKEN failed:', tokenResult.reason?.message);
   }
 
   const serverReachable = healthResp.ok && healthResp.data;
@@ -395,13 +407,25 @@ async function showConnected(settings) {
     trafficOverview.hidden = false;
   }
 
-  // API Token section
+  // API Token section — upgrade validation state if traffic stats succeeded
+  const tokenValidated = tokenResp.validated !== false
+    || (trafficResp.ok && trafficResp.data);
+  if (hasToken && !tokenResp.validated && tokenValidated) {
+    // Token was unvalidated but traffic stats now succeeded — persist upgrade
+    try { await chrome.storage.local.set({ apiTokenValidated: true }); } catch {}
+  }
+
   if (hasToken) {
     tokenPreview.textContent = tokenResp.token.substring(0, 16) + '...';
     tokenDisplay.hidden = false;
     tokenEdit.hidden = true;
-    tokenStatus.textContent = 'Configured';
-    tokenStatus.className = 'status-pill active';
+    if (!tokenValidated) {
+      tokenStatus.textContent = 'Unvalidated';
+      tokenStatus.className = 'status-pill warning';
+    } else {
+      tokenStatus.textContent = 'Configured';
+      tokenStatus.className = 'status-pill active';
+    }
     tokenStatus.hidden = false;
   } else {
     tokenDisplay.hidden = true;
@@ -580,7 +604,7 @@ reloadBtn.addEventListener('click', async () => {
 
 // -- Reset --
 
-disconnectBtn.addEventListener('click', async () => {
+async function performDisconnect() {
   try {
     const perms = await chrome.permissions.getAll();
     const dynamicOrigins = (perms.origins || []).filter(o =>
@@ -597,7 +621,9 @@ disconnectBtn.addEventListener('click', async () => {
   await chrome.storage.local.remove(['pendingOrigin', 'health']);
   await chrome.runtime.sendMessage({ type: 'DISCONNECT' });
   showSetup();
-});
+}
+
+disconnectBtn.addEventListener('click', performDisconnect);
 
 // -- API Token --
 
@@ -642,11 +668,19 @@ saveTokenBtn.addEventListener('click', async () => {
       tokenPreview.textContent = token.substring(0, 16) + '...';
       tokenDisplay.hidden = false;
       tokenEdit.hidden = true;
-      tokenStatus.textContent = 'Configured';
-      tokenStatus.className = 'status-pill active';
       tokenInput.value = '';
-      statusDot.className = 'status-dot connected';
-      statusText.textContent = 'Connected';
+      if (resp.warning) {
+        // Token saved but validation was inconclusive (e.g. network unreachable)
+        tokenStatus.textContent = 'Unvalidated';
+        tokenStatus.className = 'status-pill warning';
+        statusDot.className = 'status-dot warning';
+        statusText.textContent = 'Unvalidated';
+      } else {
+        tokenStatus.textContent = 'Configured';
+        tokenStatus.className = 'status-pill active';
+        statusDot.className = 'status-dot connected';
+        statusText.textContent = 'Connected';
+      }
     } else {
       tokenError.textContent = resp.error || 'Failed to save token';
       tokenError.hidden = false;
@@ -682,7 +716,9 @@ authGateSaveBtn.addEventListener('click', async () => {
     const resp = await chrome.runtime.sendMessage({ type: 'SET_API_TOKEN', token });
     if (resp.ok) {
       authGateTokenInput.value = '';
-      await init(); // re-init — will now show connected view
+      // Re-init — showConnected() reads persisted validated state from GET_API_TOKEN
+      // and renders "Unvalidated" pill if validation was inconclusive.
+      await init();
     } else {
       authGateError.textContent = resp.error || 'Failed to save token';
       authGateError.hidden = false;
@@ -700,12 +736,7 @@ authGateTokenInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') authGateSaveBtn.click();
 });
 
-authGateDisconnectBtn.addEventListener('click', async () => {
-  await chrome.storage.sync.set({ logInsightUrl: '', controllerUrl: '', configured: false });
-  await chrome.storage.local.remove(['pendingOrigin', 'health']);
-  await chrome.runtime.sendMessage({ type: 'DISCONNECT' });
-  showSetup();
-});
+authGateDisconnectBtn.addEventListener('click', performDisconnect);
 
 // -- Debug --
 

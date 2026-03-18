@@ -409,7 +409,7 @@ export async function fetchAllReleases() {
 // ── Auth API ────────────────────────────────────────────────────────────────
 
 export async function fetchAuthStatus() {
-  const resp = await fetch(`${BASE}/auth/status`)
+  const resp = await fetch(`${BASE}/auth/status`, { credentials: 'include' })
   if (!resp.ok) throw new Error(`API error: ${resp.status}`)
   return resp.json()
 }

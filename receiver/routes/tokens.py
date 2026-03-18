@@ -22,11 +22,20 @@ router = APIRouter()
 _VALID_SCOPES = {
     'logs.read', 'stats.read', 'flows.read', 'threats.read', 'dashboard.read',
     'settings.read', 'settings.write', 'health.read',
-    'firewall.read', 'firewall.write',
+    'firewall.read', 'firewall.write', 'firewall.syslog',
     'unifi.read', 'system.read', 'mcp.admin',
 }
 
 _VALID_CLIENT_TYPES = {'mcp', 'extension', 'api'}
+
+
+def _format_token_timestamps(item: dict) -> dict:
+    """Convert datetime fields to ISO strings for JSON serialization."""
+    if item.get('created_at'):
+        item['created_at'] = item['created_at'].isoformat()
+    if item.get('last_used_at'):
+        item['last_used_at'] = item['last_used_at'].isoformat()
+    return item
 
 
 def hash_token(token: str, salt: str) -> str:
@@ -49,14 +58,7 @@ def list_tokens_by_type(client_type: str) -> dict:
             rows = cur.fetchall()
         conn.commit()
 
-        tokens = []
-        for row in rows:
-            item = dict(row)
-            if item.get('created_at'):
-                item['created_at'] = item['created_at'].isoformat()
-            if item.get('last_used_at'):
-                item['last_used_at'] = item['last_used_at'].isoformat()
-            tokens.append(item)
+        tokens = [_format_token_timestamps(dict(row)) for row in rows]
         return {"tokens": tokens, "total": len(tokens)}
     except Exception as e:
         conn.rollback()
@@ -80,7 +82,10 @@ def create_token_record(name: str, scopes: list, client_type: str,
 
     token = f"uli-{client_type}_{secrets.token_urlsafe(32)}"
     token_id = str(uuid.uuid4())
-    prefix = token[8:16] if len(token) > 16 else token[:8]
+    # Extract prefix from the random portion (after underscore) so it's
+    # not predictable from the fixed "uli-{client_type}_" header.
+    random_part = token.split('_', 1)[1] if '_' in token else token
+    prefix = random_part[:8]
     salt = secrets.token_hex(16)
     token_hash = hash_token(token, salt)
 
@@ -130,10 +135,14 @@ def _require_session_admin(request: Request) -> dict:
 
     Bearer tokens are already rejected by AuthMiddleware for /api/tokens paths.
     Auth is already enforced by middleware; this reads request.state.auth_info.
+
+    When auth is disabled (single-user mode), returns an empty dict. Downstream
+    callers (e.g. audit) will get None from .get('user_id') — this is expected
+    since there is no authenticated user identity in no-auth mode.
     """
     auth_info = getattr(request.state, 'auth_info', None)
     if auth_info is None:
-        # Auth disabled — allow (single-user mode)
+        # Auth disabled — allow (single-user mode, no identity to attribute)
         return {}
 
     if not auth_info.get('user_id'):
@@ -166,14 +175,7 @@ def list_tokens(request: Request, client_type: str | None = None):
             rows = cur.fetchall()
         conn.commit()
 
-        tokens = []
-        for row in rows:
-            item = dict(row)
-            if item.get('created_at'):
-                item['created_at'] = item['created_at'].isoformat()
-            if item.get('last_used_at'):
-                item['last_used_at'] = item['last_used_at'].isoformat()
-            tokens.append(item)
+        tokens = [_format_token_timestamps(dict(row)) for row in rows]
         return {"tokens": tokens, "total": len(tokens)}
     except Exception as e:
         conn.rollback()
@@ -210,6 +212,7 @@ def create_token(request: Request, body: dict):
 @router.delete("/api/tokens/{token_id}")
 def revoke_token(request: Request, token_id: str):
     """Revoke (disable) an API token. Requires session-authenticated admin."""
+    _require_https(request)
     auth_info = _require_session_admin(request)
 
     result = revoke_token_by_id(token_id)

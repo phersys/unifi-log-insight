@@ -42,7 +42,9 @@ async function _authFetch(url, options = {}) {
   const { headers: extraHeaders, ...rest } = options;
   const headers = _authHeaders(extraHeaders || {});
   const resp = await fetch(url, { ...rest, headers });
-  if ((resp.status === 401 || resp.status === 403) && onAuthError) {
+  // Only signal auth error on 401 (invalid/expired token).
+  // 403 means valid token but insufficient scope — not an auth failure.
+  if (resp.status === 401 && onAuthError) {
     onAuthError();
   }
   return resp;
@@ -149,8 +151,9 @@ export async function fetchTrafficStats(timeRange = '24h') {
       `${baseUrl}/api/stats/overview?time_range=${encodeURIComponent(timeRange)}`,
       { signal: AbortSignal.timeout(8000) },
     );
-    if (resp.status === 401) return { _authRequired: true };
-    if (!resp.ok) return null;
+    // 401 is already handled globally by _authFetch (calls onAuthError).
+    // Return a sentinel so callers can show auth UI without duplicate signaling.
+    if (!resp.ok) return resp.status === 401 ? { _authRequired: true } : null;
     const data = await resp.json();
     return {
       total: data.total ?? 0,

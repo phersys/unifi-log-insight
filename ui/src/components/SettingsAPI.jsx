@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import useApiTokens from '../hooks/useApiTokens'
 import TokenCreatedModal from './TokenCreatedModal'
 import TokenList from './TokenList'
@@ -27,8 +27,6 @@ const API_SCOPES = [
 
 export default function SettingsAPI() {
   const { tokens, loading, reload, create, revoke } = useApiTokens()
-  const [message, setMessage] = useState(null)
-  const flashTimer = useRef(null)
 
   // Create token
   const [showCreateToken, setShowCreateToken] = useState(false)
@@ -36,27 +34,22 @@ export default function SettingsAPI() {
   const [tokenScopes, setTokenScopes] = useState(new Set(['logs.read', 'stats.read']))
   const [tokenClientType, setTokenClientType] = useState('api')
   const [creating, setCreating] = useState(false)
+  const [createStatus, setCreateStatus] = useState(null) // { type: 'error', text }
   const [createdToken, setCreatedToken] = useState(null)
   const [showTokenModal, setShowTokenModal] = useState(false)
+
+  // Token list status (revoke feedback)
+  const [listStatus, setListStatus] = useState(null) // { type: 'saved'|'error', text }
 
   const visibleScopes = API_SCOPES.filter(s => s.clients.includes(tokenClientType))
 
   useEffect(() => { reload() }, [reload])
 
-  useEffect(() => {
-    return () => clearTimeout(flashTimer.current)
-  }, [])
-
-  function flash(text, type = 'info') {
-    setMessage({ text, type })
-    clearTimeout(flashTimer.current)
-    flashTimer.current = setTimeout(() => setMessage(null), 4000)
-  }
-
   async function handleCreateToken(e) {
     e.preventDefault()
-    if (!tokenName.trim()) { flash('Token name is required', 'error'); return }
-    if (tokenScopes.size === 0) { flash('Select at least one scope', 'error'); return }
+    setCreateStatus(null)
+    if (!tokenName.trim()) { setCreateStatus({ type: 'error', text: 'Token name is required' }); return }
+    if (tokenScopes.size === 0) { setCreateStatus({ type: 'error', text: 'Select at least one scope' }); return }
     setCreating(true)
     try {
       const resp = await create({
@@ -68,8 +61,9 @@ export default function SettingsAPI() {
       setShowTokenModal(true)
       setTokenName('')
       setTokenScopes(new Set(['logs.read', 'stats.read']))
+      setCreateStatus(null)
     } catch (err) {
-      flash(err.message || 'Failed to create token', 'error')
+      setCreateStatus({ type: 'error', text: err.message || 'Failed to create token' })
     } finally {
       setCreating(false)
     }
@@ -77,11 +71,12 @@ export default function SettingsAPI() {
 
   async function handleRevoke(id, name) {
     if (!confirm(`Revoke token "${name}"? This cannot be undone.`)) return
+    setListStatus(null)
     try {
       await revoke(id)
-      flash('Token revoked', 'success')
+      setListStatus({ type: 'saved', text: 'Token revoked' })
     } catch (err) {
-      flash(err.message || 'Failed to revoke token', 'error')
+      setListStatus({ type: 'error', text: err.message || 'Failed to revoke token' })
     }
   }
 
@@ -108,27 +103,16 @@ export default function SettingsAPI() {
 
   return (
     <div className="space-y-8">
-      {message && (
-        <div className={`px-4 py-2 rounded text-sm ${
-          message.type === 'error' ? 'bg-red-900/40 text-red-300 border border-red-700/50' :
-          message.type === 'success' ? 'bg-green-900/40 text-green-300 border border-green-700/50' :
-          'bg-blue-900/40 text-blue-300 border border-blue-700/50'
-        }`}>
-          {message.text}
-        </div>
-      )}
-
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-semibold text-gray-300 uppercase tracking-wider">API Tokens</h2>
           <button
-            onClick={() => { setShowCreateToken(!showCreateToken); setCreatedToken(null) }}
+            onClick={() => { setShowCreateToken(!showCreateToken); setCreatedToken(null); setCreateStatus(null) }}
             className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-sm rounded transition-colors"
           >
             Create Token
           </button>
         </div>
-
 
         {showCreateToken && (
           <form onSubmit={handleCreateToken} className="mb-4 rounded-lg border border-gray-700 bg-gray-950 p-5 space-y-3">
@@ -186,7 +170,7 @@ export default function SettingsAPI() {
                 })}
               </div>
             </div>
-            <div className="flex gap-2 pt-1">
+            <div className="flex items-center gap-3 pt-1">
               <button
                 type="submit"
                 disabled={creating}
@@ -196,18 +180,28 @@ export default function SettingsAPI() {
               </button>
               <button
                 type="button"
-                onClick={() => setShowCreateToken(false)}
+                onClick={() => { setShowCreateToken(false); setCreateStatus(null) }}
                 className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
               >
                 Cancel
               </button>
+              {createStatus?.type === 'error' && (
+                <span className="text-sm text-red-400">{createStatus.text}</span>
+              )}
             </div>
           </form>
         )}
 
         <div className="rounded-lg border border-gray-700 bg-gray-950">
           <div className="p-5">
-            <p className="text-sm font-medium text-gray-200 mb-3">Active tokens</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-gray-200">Active tokens</p>
+              {listStatus && (
+                <span className={`text-sm ${listStatus.type === 'saved' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {listStatus.text}
+                </span>
+              )}
+            </div>
             <TokenList tokens={tokens} onRevoke={handleRevoke} />
           </div>
         </div>

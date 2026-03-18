@@ -17,6 +17,7 @@ export default function useApiTokens(clientType) {
       const resp = await fetchApiTokens(clientType)
       setTokens(resp.tokens || [])
     } catch (err) {
+      setTokens([])
       setError(err.message || 'Failed to load tokens')
     } finally {
       setLoading(false)
@@ -24,14 +25,27 @@ export default function useApiTokens(clientType) {
   }, [clientType])
 
   const create = useCallback(async (payload) => {
-    const resp = await createApiToken(payload)
-    await reload()
+    let resp
+    try {
+      resp = await createApiToken(payload)
+    } catch (err) {
+      setError(err.message || 'Failed to create token')
+      throw err
+    }
+    // Reload list in the background — don't let reload failure mask a successful create
+    try { await reload() } catch (err) { setError(err.message || 'Failed to refresh tokens') }
     return resp
   }, [reload])
 
   const revoke = useCallback(async (id) => {
-    await revokeApiToken(id)
-    await reload()
+    try {
+      await revokeApiToken(id)
+    } catch (err) {
+      setError(err.message || 'Failed to revoke token')
+      throw err
+    }
+    // Reload list in the background — don't let reload failure mask a successful revoke
+    try { await reload() } catch (err) { setError(err.message || 'Failed to refresh tokens') }
   }, [reload])
 
   return { tokens, loading, error, reload, create, revoke }

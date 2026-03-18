@@ -1,6 +1,6 @@
 import '../lib/url-utils.js';
 import { DEFAULT_BASE_URL, THREAT_COLORS } from '../lib/constants.js';
-import { getSettings, saveSettings, setCache, getApiToken, saveApiToken, clearApiToken } from '../lib/storage.js';
+import { getSettings, saveSettings, setCache, getApiToken, saveApiToken, clearApiToken, getApiTokenValidated } from '../lib/storage.js';
 import { checkHealth, fetchUniFiSettings, batchThreatLookup, fetchTrafficStats, setBaseUrl, getBaseUrl, setAuthToken, getAuthToken, setAuthErrorHandler } from '../lib/api-client.js';
 
 const SW_LOG_PREFIX = '[ULI][SW]';
@@ -428,9 +428,9 @@ async function handleMessage(msg) {
           setBadge('!', '#f87171');
           return { ok: false, error: 'Token rejected — check it is valid and not expired' };
         }
-        await saveApiToken(token);
-        swLog('API token saved');
         if (stats) {
+          await saveApiToken(token, { validated: true });
+          swLog('API token saved (validated)');
           setBadge('', '#34d399');
           // Auto-discover controller URL now that we have a valid token
           const settings = await getSettings();
@@ -449,9 +449,12 @@ async function handleMessage(msg) {
           }
           return { ok: true, data: stats };
         }
-        // stats is null — might be a network issue, token may still be valid
-        setBadge('', '#34d399');
-        return { ok: true };
+        // stats is null — network issue, token may still be valid but unvalidated.
+        // Persist validated:false so the popup can render "Unvalidated" after refresh.
+        await saveApiToken(token, { validated: false });
+        setBadge('?', '#fbbf24');
+        swWarn('token saved but validation inconclusive (network unreachable)');
+        return { ok: true, warning: 'Token saved but could not be validated — network unreachable' };
       }
       // No base URL configured yet — persist token for later use
       setAuthToken(token);
@@ -461,7 +464,8 @@ async function handleMessage(msg) {
     }
 
     case 'GET_API_TOKEN': {
-      return { ok: true, token: getAuthToken() };
+      const validated = await getApiTokenValidated();
+      return { ok: true, token: getAuthToken(), validated };
     }
 
     case 'CLEAR_API_TOKEN': {
