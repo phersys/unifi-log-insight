@@ -16,7 +16,8 @@ from deps import get_conn, put_conn, enricher_db
 from ip_identity import load_identity_config, annotate_record, annotate_ip
 from query_helpers import (parse_time_range, build_log_query, validate_time_params,
                           VALID_TIME_RANGES, device_name_client_lateral,
-                          device_name_device_lateral, device_name_coalesce)
+                          device_name_device_lateral, device_name_coalesce,
+                          sanitize_csv_cell)
 
 logger = logging.getLogger('api.stats')
 
@@ -530,7 +531,7 @@ def get_ip_pairs_csv(
                 for row in cur:
                     buf.seek(0)
                     buf.truncate()
-                    writer.writerow(row)
+                    writer.writerow([sanitize_csv_cell(str(v)) if v is not None else '' for v in row])
                     yield buf.getvalue()
             conn.commit()
         except Exception:
