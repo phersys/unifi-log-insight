@@ -33,6 +33,9 @@ export default function FlowView({ maxFilterDays }) {
   // Sub-tab state
   const [activePanel, setActivePanel] = useState('sankey')
 
+  // Defer ip-pairs until Sankey resolves (avoid concurrent heavy queries)
+  const [sankeyReady, setSankeyReady] = useState(false)
+
   // Cross-filter state
   const [sankeyFilter, setSankeyFilter] = useState(null)
   const [zoneFilter, setZoneFilter] = useState(null)
@@ -91,6 +94,12 @@ export default function FlowView({ maxFilterDays }) {
     if (skipBadgeClear.current) return
     setActiveViewName(null)
   }, [activeActions, activeDirections, timeRange, timeFrom, timeTo, dims, topN])
+
+  // Reset ip-pairs deferral when Sankey will re-fetch (semantically equivalent to SankeyChart
+  // fetch deps: activeActions→filters.rule_action, activeDirections→filters.direction, expandedRow?.ip→hostIp)
+  useEffect(() => {
+    setSankeyReady(false)
+  }, [timeRange, timeFrom, timeTo, activeActions, activeDirections, dims, topN, expandedRow?.ip, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshSavedViews = useCallback(() => {
     fetchSavedViews()
@@ -175,7 +184,8 @@ export default function FlowView({ maxFilterDays }) {
     direction: activeDirections.length === DIRECTIONS.length ? null : activeDirections.join(','),
   }
 
-  const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+  const refresh = useCallback(() => { setSankeyReady(false); setRefreshKey(k => k + 1) }, [])
+  const handleSankeyDataLoaded = useCallback(() => setSankeyReady(true), [])
 
   // Sankey node click — toggle filter, clear zone filter (mutual exclusivity)
   const handleSankeyNodeClick = useCallback(({ type, value }) => {
@@ -273,8 +283,8 @@ export default function FlowView({ maxFilterDays }) {
               onClick={() => toggleDirection(dir)}
               className={`px-2 py-1 rounded text-xs font-medium uppercase transition-all ${
                 activeDirections.includes(dir)
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-500 hover:text-gray-400'
+                  ? 'bg-black text-white border border-gray-600'
+                  : 'text-gray-500 hover:text-gray-400 border border-transparent'
               }`}
             >
               <span className={activeDirections.includes(dir) ? DIRECTION_COLORS[dir] : ''}>{DIRECTION_ICONS[dir]}</span> {dir === 'inter_vlan' ? 'vlan' : dir}
@@ -292,8 +302,8 @@ export default function FlowView({ maxFilterDays }) {
               onClick={() => { setTimeRange(tr); setTimeFrom(null); setTimeTo(null) }}
               className={`px-2 py-1 rounded text-xs font-medium transition-all ${
                 !isCustomTime && timeRange === tr
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-400 hover:text-gray-300'
+                  ? 'bg-black text-white border border-gray-600'
+                  : 'text-gray-400 hover:text-gray-300 border border-transparent'
               }`}
             >
               {tr}
@@ -370,8 +380,8 @@ export default function FlowView({ maxFilterDays }) {
             onClick={() => setActivePanel(tab.key)}
             className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
               activePanel === tab.key
-                ? 'bg-gray-700 text-white'
-                : 'text-gray-500 hover:text-gray-300'
+                ? 'bg-black text-white border border-gray-600'
+                : 'text-gray-500 hover:text-gray-300 border border-transparent'
             }`}
           >
             {tab.label}
@@ -403,6 +413,7 @@ export default function FlowView({ maxFilterDays }) {
               savedViews={savedViews}
               onDeleteView={handleDeleteView}
               onRefreshViews={refreshSavedViews}
+              onDataLoaded={handleSankeyDataLoaded}
             />
           )}
           {activePanel === 'zone-matrix' && (
@@ -432,6 +443,7 @@ export default function FlowView({ maxFilterDays }) {
             savedViews={savedViews}
             onDeleteView={handleDeleteView}
             onRefreshViews={refreshSavedViews}
+            deferFetch={activePanel === 'sankey' && !sankeyReady}
           />
           {expandedRow && (
             <HostSlidePanel

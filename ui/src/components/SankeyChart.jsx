@@ -88,7 +88,7 @@ function SankeyMenuItems({ onSaveView, onLoadView, savedViews, onDeleteView, onD
   )
 }
 
-export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFilter, hostIp, hostSearchInput, onHostSearchChange, onHostSearch, onHostSearchClear, dims, setDims, topN, setTopN, onSaveView, onLoadView, savedViews, onDeleteView, onRefreshViews }) {
+export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFilter, hostIp, hostSearchInput, onHostSearchChange, onHostSearch, onHostSearchClear, dims, setDims, topN, setTopN, onSaveView, onLoadView, savedViews, onDeleteView, onRefreshViews, onDataLoaded }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -129,7 +129,7 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
     })
       .then(d => { if (!cancelled) setData(d) })
       .catch(err => { if (!cancelled) setError(err.message) })
-      .finally(() => { if (!cancelled) setLoading(false) })
+      .finally(() => { if (!cancelled) { setLoading(false); onDataLoaded?.() } })
     return () => { cancelled = true }
   }, [filters.time_range, filters.time_from, filters.time_to, filters.rule_action, filters.direction, dims, topN, hostIp, refreshKey])
 
@@ -412,7 +412,7 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
             value={topN}
             onChange={e => setTopN(e.target.value === '' ? '' : Number(e.target.value))}
             onBlur={() => setTopN(v => Math.max(3, Math.min(50, Number(v) || 3)))}
-            className="w-12 bg-gray-800/50 text-gray-300 text-xs rounded px-1.5 py-0.5 border border-gray-700 text-center focus:outline-none focus:border-gray-500"
+            className="w-12 bg-black text-gray-300 text-xs rounded px-1.5 py-0.5 border border-gray-700 text-center focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
           />
         </div>
 
@@ -427,7 +427,7 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
                 value={hostSearchInput || ''}
                 onChange={e => onHostSearchChange(e.target.value)}
                 onKeyDown={onHostSearch}
-                className="w-24 sm:w-36 bg-gray-800/50 text-gray-300 text-xs rounded px-2 py-0.5 border border-gray-700 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+                className="w-24 sm:w-36 bg-black text-gray-300 text-xs rounded px-2 py-0.5 border border-gray-700 placeholder-gray-600 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
               />
               {(hostSearchInput || hostIp) && (
                 <button
