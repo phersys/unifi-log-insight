@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { fetchAuthStatus, fetchAuthMe, authChangePassword, authSetup, updateSessionTtl, fetchProxyToken } from '../api'
 import CopyButton from './CopyButton'
 
-const INPUT_CLS = 'w-full px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-teal-500'
+const INPUT_CLS = 'w-full px-3 py-1.5 bg-black border border-gray-700 rounded text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20'
 
 export default function SettingsSecurity({ onAuthEnabled }) {
   const [authStatus, setAuthStatus] = useState(null)
@@ -16,6 +16,9 @@ export default function SettingsSecurity({ onAuthEnabled }) {
   const [confirmPw, setConfirmPw] = useState('')
   const [pwSaving, setPwSaving] = useState(false)
   const [pwStatus, setPwStatus] = useState(null) // { type: 'saved'|'error', text }
+  const [showCurrentPw, setShowCurrentPw] = useState(false)
+  const [showNewPw, setShowNewPw] = useState(false)
+  const [showConfirmPw, setShowConfirmPw] = useState(false)
 
   // Enable auth (first-user setup)
   const [setupUser, setSetupUser] = useState('admin')
@@ -23,6 +26,8 @@ export default function SettingsSecurity({ onAuthEnabled }) {
   const [setupConfirm, setSetupConfirm] = useState('')
   const [setupSaving, setSetupSaving] = useState(false)
   const [setupStatus, setSetupStatus] = useState(null) // { type: 'saved'|'error', text }
+  const [showSetupPw, setShowSetupPw] = useState(false)
+  const [showSetupConfirm, setShowSetupConfirm] = useState(false)
 
   // Session duration
   const [sessionTtl, setSessionTtl] = useState(168)
@@ -162,17 +167,18 @@ export default function SettingsSecurity({ onAuthEnabled }) {
               </span>
             </div>
             {!authEnabled && (
-              <p className="mt-2 text-xs text-gray-500">
-                Set <code className="px-1 py-0.5 bg-gray-800 rounded text-gray-400 text-xs">AUTH_ENABLED=true</code> in your <code className="px-1 py-0.5 bg-gray-800 rounded text-gray-400 text-xs">.env</code> or <code className="px-1 py-0.5 bg-gray-800 rounded text-gray-400 text-xs">docker-compose.yml</code> and restart the container.
+              <p className="mt-2 text-sm text-gray-500">
+                Set <code className="px-1 py-0.5 bg-gray-800 rounded text-gray-400 text-sm">AUTH_ENABLED=true</code> in your <code className="px-1 py-0.5 bg-gray-800 rounded text-gray-400 text-sm">.env</code> or <code className="px-1 py-0.5 bg-gray-800 rounded text-gray-400 text-sm">docker-compose.yml</code> and restart the container.
               </p>
             )}
           </div>
 
-          {!authEnabled && !authStatus?.has_users && (
+          {!authEnabled && !authStatus?.has_admin && (
             <>
               <div className="border-t border-gray-800" />
               <div className="p-5">
                 {authStatus?.is_https ? (
+                  <>
                   <form onSubmit={handleEnableAuth} className="space-y-3 max-w-sm">
                     <p className="text-sm text-gray-500 mb-3">Create an admin account to enable authentication and protect your instance.</p>
                     <input
@@ -184,24 +190,42 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                       autoComplete="username"
                       className={`${INPUT_CLS} disabled:opacity-50`}
                     />
-                    <input
-                      type="password"
-                      placeholder="Password (min 8 characters)"
-                      value={setupPw}
-                      onChange={e => setSetupPw(e.target.value)}
-                      disabled={setupSaving}
-                      autoComplete="new-password"
-                      className={`${INPUT_CLS} disabled:opacity-50`}
-                    />
-                    <input
-                      type="password"
-                      placeholder="Confirm password"
-                      value={setupConfirm}
-                      onChange={e => setSetupConfirm(e.target.value)}
-                      disabled={setupSaving}
-                      autoComplete="new-password"
-                      className={`${INPUT_CLS} disabled:opacity-50`}
-                    />
+                    <div className="relative">
+                      <input
+                        type={showSetupPw ? 'text' : 'password'}
+                        placeholder="Password (min 8 characters)"
+                        value={setupPw}
+                        onChange={e => setSetupPw(e.target.value)}
+                        disabled={setupSaving}
+                        autoComplete="new-password"
+                        className={`${INPUT_CLS} disabled:opacity-50 pr-10`}
+                      />
+                      <button type="button" onClick={() => setShowSetupPw(v => !v)} aria-label={showSetupPw ? 'Hide password' : 'Show password'} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-300 transition-colors">
+                        {showSetupPw ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                        )}
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showSetupConfirm ? 'text' : 'password'}
+                        placeholder="Confirm password"
+                        value={setupConfirm}
+                        onChange={e => setSetupConfirm(e.target.value)}
+                        disabled={setupSaving}
+                        autoComplete="new-password"
+                        className={`${INPUT_CLS} disabled:opacity-50 pr-10`}
+                      />
+                      <button type="button" onClick={() => setShowSetupConfirm(v => !v)} aria-label={showSetupConfirm ? 'Hide password' : 'Show password'} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-300 transition-colors">
+                        {showSetupConfirm ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                        )}
+                      </button>
+                    </div>
                     <div className="flex items-center gap-3">
                       <button
                         type="submit"
@@ -214,32 +238,104 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                         <span className="text-sm text-red-400">{setupStatus.text}</span>
                       )}
                     </div>
-                    <div className="mt-4 p-3 rounded bg-blue-500/10 border border-blue-500/30 text-sm text-blue-300">
-                      <p className="font-medium text-blue-200">Using the browser extension?</p>
-                      <p className="mt-1 text-blue-300/80">After enabling authentication:</p>
-                      <ol className="mt-1.5 list-decimal list-inside space-y-1 text-blue-300/80">
-                        <li>Update the extension to <strong className="text-blue-200">v1.1.0</strong> or later from the Chrome Web Store or Firefox Add-ons site</li>
-                        <li>Go to <strong className="text-blue-200">Settings &rarr; API</strong> and create a token with client type <strong className="text-blue-200">Extension</strong></li>
-                        <li>Paste the token into the extension popup</li>
-                        <li>Ensure your controller URL in the extension uses <strong className="text-blue-200">HTTPS</strong></li>
-                      </ol>
-                      <p className="mt-2 text-blue-300/80">
-                        For more details, see the{' '}
-                        <a href="https://insightsplus.dev/docs/authentication" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline text-blue-200 hover:text-blue-100">
-                          Authentication docs
+                  </form>
+                  <div className="mt-4 p-3 rounded bg-blue-500/10 border border-blue-500/30 text-sm text-blue-300">
+                    <p className="font-medium text-blue-300">Before enabling authentication, please read:</p>
+                    <ul className="mt-1.5 list-disc list-inside space-y-1">
+                      <li>
+                        <a href="https://insightsplus.dev/docs/authentication" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors">
+                          Authentication guide
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                        </a>.
+                        </a>
+                        {' '}&mdash; HTTPS/proxy requirements, session management, API tokens
+                      </li>
+                      <li>
+                        <a href="https://insightsplus.dev/docs/browser-extension" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors">
+                          Browser extension setup
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                        </a>
+                        {' '}&mdash; token configuration, HTTPS requirement, extension compatibility
+                      </li>
+                    </ul>
+                  </div>
+                  </>
+                ) : window.location.protocol === 'https:' && authStatus?.proxy_token ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
+                        <svg className="w-4 h-4 text-yellow-400 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                        <p className="text-sm text-yellow-400/90">
+                          HTTPS detected but not reaching the app. Your reverse proxy needs to forward the <code className="px-1 py-0.5 bg-yellow-500/15 rounded text-yellow-300 text-sm">X-ULI-Proxy-Auth</code> header.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-200 font-medium">Your proxy token</p>
+                        <div className="rounded bg-black border border-gray-800 p-3 overflow-x-auto">
+                          <pre className="text-sm text-gray-300 font-mono whitespace-pre select-all">{authStatus.proxy_token}</pre>
+                        </div>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span className="text-sm text-gray-300">Copy token</span>
+                          <CopyButton text={authStatus.proxy_token} color="text-teal-400 hover:text-teal-300" className="ml-0" />
+                        </div>
+                      </div>
+
+                      <details className="group">
+                        <summary className="flex items-center gap-1 cursor-pointer text-sm font-medium text-gray-300 list-none">
+                          <span className="transition-transform group-open:rotate-90">&#x25B8;</span> Proxy configuration examples
+                        </summary>
+                        <div className="mt-2 space-y-3">
+                          <div className="space-y-1.5">
+                            <p className="text-sm text-gray-400">Nginx</p>
+                            <div className="rounded bg-black border border-gray-800 p-3 overflow-x-auto">
+                              <pre className="text-sm text-gray-300 font-mono whitespace-pre">{`proxy_set_header X-ULI-Proxy-Auth "${authStatus.proxy_token}";`}</pre>
+                            </div>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="text-sm text-gray-300">Copy</span>
+                              <CopyButton text={`proxy_set_header X-ULI-Proxy-Auth "${authStatus.proxy_token}";`} color="text-teal-400 hover:text-teal-300" className="ml-0" />
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <p className="text-sm text-gray-400">Caddy</p>
+                            <div className="rounded bg-black border border-gray-800 p-3 overflow-x-auto">
+                              <pre className="text-sm text-gray-300 font-mono whitespace-pre">{`header_up X-ULI-Proxy-Auth "${authStatus.proxy_token}"`}</pre>
+                            </div>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="text-sm text-gray-300">Copy</span>
+                              <CopyButton text={`header_up X-ULI-Proxy-Auth "${authStatus.proxy_token}"`} color="text-teal-400 hover:text-teal-300" className="ml-0" />
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <p className="text-sm text-gray-400">Traefik</p>
+                            <div className="rounded bg-black border border-gray-800 p-3 overflow-x-auto">
+                              <pre className="text-sm text-gray-300 font-mono whitespace-pre">{`- "traefik.http.middlewares.uli-auth.headers.customrequestheaders.X-ULI-Proxy-Auth=${authStatus.proxy_token}"`}</pre>
+                            </div>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="text-sm text-gray-300">Copy</span>
+                              <CopyButton text={`traefik.http.middlewares.uli-auth.headers.customrequestheaders.X-ULI-Proxy-Auth=${authStatus.proxy_token}`} color="text-teal-400 hover:text-teal-300" className="ml-0" />
+                            </div>
+                          </div>
+                        </div>
+                      </details>
+
+                      <p className="text-sm text-gray-500">
+                        Add the header to your reverse proxy config, then refresh this page.{' '}
+                        <a href="https://insightsplus.dev/docs/authentication#reverse-proxy" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-gray-400 hover:text-gray-300 transition-colors">
+                          Full guide
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                        </a>
                       </p>
                     </div>
-                  </form>
-                ) : (
-                  <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
-                    <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                    </svg>
-                    <p className="text-sm text-yellow-400/90">Enabling authentication requires HTTPS. Please access the app through a reverse proxy with TLS enabled.</p>
-                  </div>
-                )}
+                  ) : (
+                    <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
+                      <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                      </svg>
+                      <p className="text-sm text-yellow-400/90">Enabling authentication requires HTTPS. Please access the app through a reverse proxy with TLS enabled.</p>
+                    </div>
+                  )
+                }
               </div>
             </>
           )}
@@ -267,31 +363,58 @@ export default function SettingsSecurity({ onAuthEnabled }) {
 
                 {showPwChange && (
                   <form onSubmit={handleChangePassword} className="mt-3 space-y-3 max-w-sm">
-                    <input
-                      type="password"
-                      placeholder="Current password"
-                      value={currentPw}
-                      onChange={e => setCurrentPw(e.target.value)}
-                      required
-                      className={INPUT_CLS}
-                    />
-                    <input
-                      type="password"
-                      placeholder="New password (min 8 characters)"
-                      value={newPw}
-                      onChange={e => setNewPw(e.target.value)}
-                      required
-                      minLength={8}
-                      className={INPUT_CLS}
-                    />
-                    <input
-                      type="password"
-                      placeholder="Confirm new password"
-                      value={confirmPw}
-                      onChange={e => setConfirmPw(e.target.value)}
-                      required
-                      className={INPUT_CLS}
-                    />
+                    <div className="relative">
+                      <input
+                        type={showCurrentPw ? 'text' : 'password'}
+                        placeholder="Current password"
+                        value={currentPw}
+                        onChange={e => setCurrentPw(e.target.value)}
+                        required
+                        className={`${INPUT_CLS} pr-10`}
+                      />
+                      <button type="button" onClick={() => setShowCurrentPw(v => !v)} aria-label={showCurrentPw ? 'Hide password' : 'Show password'} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-300 transition-colors">
+                        {showCurrentPw ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                        )}
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showNewPw ? 'text' : 'password'}
+                        placeholder="New password (min 8 characters)"
+                        value={newPw}
+                        onChange={e => setNewPw(e.target.value)}
+                        required
+                        minLength={8}
+                        className={`${INPUT_CLS} pr-10`}
+                      />
+                      <button type="button" onClick={() => setShowNewPw(v => !v)} aria-label={showNewPw ? 'Hide password' : 'Show password'} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-300 transition-colors">
+                        {showNewPw ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                        )}
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPw ? 'text' : 'password'}
+                        placeholder="Confirm new password"
+                        value={confirmPw}
+                        onChange={e => setConfirmPw(e.target.value)}
+                        required
+                        className={`${INPUT_CLS} pr-10`}
+                      />
+                      <button type="button" onClick={() => setShowConfirmPw(v => !v)} aria-label={showConfirmPw ? 'Hide password' : 'Show password'} className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-300 transition-colors">
+                        {showConfirmPw ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12c1.292 4.338 5.31 7.5 10.066 7.5.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+                        )}
+                      </button>
+                    </div>
                     <div className="flex items-center gap-3">
                       <button
                         type="submit"
@@ -328,7 +451,7 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                 <select
                   value={sessionTtl}
                   onChange={e => { setSessionTtl(Number(e.target.value)); setTtlStatus(null) }}
-                  className="px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-gray-200 focus:outline-none focus:border-teal-500"
+                  className="px-3 py-1.5 bg-black border border-gray-700 rounded text-sm text-gray-200 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
                 >
                   <option value={1}>1 hour</option>
                   <option value={4}>4 hours</option>
@@ -383,7 +506,7 @@ export default function SettingsSecurity({ onAuthEnabled }) {
               <p className="text-sm text-gray-400">
                 Add this header to your reverse proxy so the app can verify secure connections.
               </p>
-              <div className="rounded bg-gray-900 border border-gray-800 p-3 overflow-x-auto">
+              <div className="rounded bg-black border border-gray-800 p-3 overflow-x-auto">
                 <pre className="text-sm text-gray-300 font-mono whitespace-pre select-all">{proxyToken}</pre>
               </div>
               <div className="flex items-center justify-end gap-1.5">
@@ -410,7 +533,7 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                     <p className="text-sm text-gray-400">
                       Add this line inside your <span className="font-mono text-gray-300">location /</span> block:
                     </p>
-                    <div className="rounded bg-gray-900 border border-gray-800 p-3 overflow-x-auto">
+                    <div className="rounded bg-black border border-gray-800 p-3 overflow-x-auto">
                       <pre className="text-sm text-gray-300 font-mono whitespace-pre">{`location / {\n    proxy_set_header X-ULI-Proxy-Auth "${proxyToken}";\n    # ... your existing proxy_pass and other headers ...\n}`}</pre>
                     </div>
                     <div className="flex items-center justify-end gap-1.5">
@@ -442,7 +565,7 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                     <p className="text-sm text-gray-400">
                       Add <span className="font-mono text-gray-300">header_up</span> inside your <span className="font-mono text-gray-300">reverse_proxy</span> block:
                     </p>
-                    <div className="rounded bg-gray-900 border border-gray-800 p-3 overflow-x-auto">
+                    <div className="rounded bg-black border border-gray-800 p-3 overflow-x-auto">
                       <pre className="text-sm text-gray-300 font-mono whitespace-pre">{`reverse_proxy <your-host>:8090 {\n    header_up X-ULI-Proxy-Auth "${proxyToken}"\n}`}</pre>
                     </div>
                     <div className="flex items-center justify-end gap-1.5">
@@ -462,7 +585,7 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                     <p className="text-sm text-gray-400">
                       Add these Docker labels to your service in <span className="font-mono text-gray-300">docker-compose.yml</span>:
                     </p>
-                    <div className="rounded bg-gray-900 border border-gray-800 p-3 overflow-x-auto">
+                    <div className="rounded bg-black border border-gray-800 p-3 overflow-x-auto">
                       <pre className="text-sm text-gray-300 font-mono whitespace-pre">{`labels:\n  - "traefik.http.middlewares.uli-auth.headers.customrequestheaders.X-ULI-Proxy-Auth=${proxyToken}"\n  - "traefik.http.routers.<your-router>.middlewares=uli-auth"`}</pre>
                     </div>
                     <div className="flex items-center justify-end gap-1.5">
