@@ -406,7 +406,10 @@ export default function Dashboard({ maxFilterDays }) {
             </div>
             {stats.by_direction && Object.keys(stats.by_direction).length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-gray-800/50">
-                {Object.entries(stats.by_direction).map(([dir, count]) => (
+                {['inbound', 'outbound', 'inter_vlan', 'nat', 'local', 'vpn']
+                  .filter(dir => stats.by_direction[dir] != null)
+                  .map(dir => [dir, stats.by_direction[dir]])
+                  .map(([dir, count]) => (
                   <span key={dir} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-800/50 text-xs font-medium text-gray-300">
                     <span className={DIRECTION_COLORS[dir] || 'text-gray-300'}>{DIRECTION_ICONS[dir]}</span>
                     <span className="uppercase">{dir === 'inter_vlan' ? 'VLAN' : dir}</span>
