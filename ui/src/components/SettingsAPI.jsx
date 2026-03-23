@@ -5,6 +5,8 @@ import TokenList from './TokenList'
 
 const INPUT_CLS = 'px-3 py-1.5 bg-black border border-gray-700 rounded text-sm text-gray-200 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20'
 
+const DEFAULT_TOKEN_SCOPES = new Set(['logs.read', 'stats.read'])
+
 // Scopes the browser extension needs — locked when client_type is 'extension'
 const EXTENSION_REQUIRED_SCOPES = new Set(['health.read', 'settings.read', 'threats.read', 'stats.read', 'unifi.read'])
 
@@ -31,7 +33,7 @@ export default function SettingsAPI() {
   // Create token
   const [showCreateToken, setShowCreateToken] = useState(false)
   const [tokenName, setTokenName] = useState('')
-  const [tokenScopes, setTokenScopes] = useState(new Set(['logs.read', 'stats.read']))
+  const [tokenScopes, setTokenScopes] = useState(new Set(DEFAULT_TOKEN_SCOPES))
   const [tokenClientType, setTokenClientType] = useState('api')
   const [creating, setCreating] = useState(false)
   const [createStatus, setCreateStatus] = useState(null) // { type: 'error', text }
@@ -185,7 +187,7 @@ export default function SettingsAPI() {
               </button>
               <button
                 type="button"
-                onClick={() => { setShowCreateToken(false); setCreateStatus(null) }}
+                onClick={() => { setShowCreateToken(false); setCreateStatus(null); setTokenName(''); setTokenClientType('api'); setTokenScopes(new Set(DEFAULT_TOKEN_SCOPES)) }}
                 className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
               >
                 Cancel
@@ -263,7 +265,7 @@ export default function SettingsAPI() {
             setCreatedToken(null)
             setTokenName('')
             setTokenClientType('api')
-            setTokenScopes(new Set(['logs.read', 'stats.read']))
+            setTokenScopes(new Set(DEFAULT_TOKEN_SCOPES))
           }}
         />
       )}
