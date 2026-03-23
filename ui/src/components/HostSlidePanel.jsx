@@ -88,9 +88,9 @@ export default function HostSlidePanel({ ip, filters, onClose, onPeerClick }) {
               ) : (
                 <table className="w-full text-xs">
                   <tbody>
-                    {(data.peers_as_source ?? []).map((peer, i) => (
+                    {(data.peers_as_source ?? []).map((peer) => (
                       <tr
-                        key={i}
+                        key={peer.peer_ip}
                         className="border-t border-gray-800/30 hover:bg-gray-800/30 cursor-pointer transition-colors"
                         onClick={() => onPeerClick?.(peer.peer_ip)}
                       >
@@ -125,9 +125,9 @@ export default function HostSlidePanel({ ip, filters, onClose, onPeerClick }) {
               ) : (
                 <table className="w-full text-xs">
                   <tbody>
-                    {(data.peers_as_destination ?? []).map((peer, i) => (
+                    {(data.peers_as_destination ?? []).map((peer) => (
                       <tr
-                        key={i}
+                        key={peer.peer_ip}
                         className="border-t border-gray-800/30 hover:bg-gray-800/30 cursor-pointer transition-colors"
                         onClick={() => onPeerClick?.(peer.peer_ip)}
                       >
