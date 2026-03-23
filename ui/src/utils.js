@@ -19,18 +19,21 @@ export function FlagIcon({ code, size = 14 }) {
 export function formatTime(ts) {
   if (!ts) return '—'
   const d = new Date(ts)
+  if (isNaN(d.getTime())) return '—'
   return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 export function formatDateShort(ts) {
-  if (!ts) return ''
+  if (!ts) return '—'
   const d = new Date(ts)
+  if (isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
 export function formatDateTime(ts) {
   if (!ts) return '—'
   const d = new Date(ts)
+  if (isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' +
     d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }

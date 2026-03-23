@@ -361,7 +361,7 @@ async function showConnected(settings) {
 
   // Auth gate: server reachable, requires auth, and either no token or token was revoked
   if (serverReachable && authRequired && (!hasToken || !tokenResp.validated)) {
-    const isHttp = baseUrl.toLowerCase().startsWith('http://');
+    const isHttp = /^http:\/\//i.test(baseUrl);
     if (isHttp) {
       authGateError.textContent = 'Authentication requires HTTPS. Click "Reset Extension" below and reconnect using your external HTTPS address (e.g. https://logs.yourdomain.com).';
       authGateError.hidden = false;
