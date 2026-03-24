@@ -168,13 +168,6 @@ def build_zone_map(unifi_api, vpn_networks=None):
                     'network_name': info['name'],
                     'vlan': info.get('vlan'),
                 })
-            elif info and info.get('purpose') == 'wan':
-                for wi in wan_interfaces:
-                    interfaces.append({
-                        'interface': wi['interface'],
-                        'network_name': wi['name'],
-                        'wan_ip': wi.get('wan_ip'),
-                    })
 
         # External zone — add WAN interfaces
         if zname_lower == 'external' and not interfaces:

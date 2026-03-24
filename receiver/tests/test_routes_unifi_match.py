@@ -1,0 +1,181 @@
+"""Tests for syslog-toggle route contracts: match-log endpoint and cache invalidation hooks.
+
+Covers:
+- POST /api/firewall/policies/match-log disabled states
+- Cache invalidation on PATCH, setup complete, and VPN save
+"""
+
+import sys
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+
+# ── Shared helpers ────────────────────────────────────────────────────────────
+
+def _clear_route_modules(monkeypatch):
+    """Remove cached route modules so each test gets a fresh import."""
+    for mod_name in list(sys.modules):
+        if mod_name.startswith('routes'):
+            monkeypatch.delitem(sys.modules, mod_name, raising=False)
+
+
+def _make_base_mock_deps():
+    """Build a mock deps module with attributes common to all route tests."""
+    mock_deps = MagicMock()
+    mock_deps.APP_VERSION = '3.1.0-test'
+    mock_deps.get_conn = MagicMock()
+    mock_deps.put_conn = MagicMock()
+    mock_deps.enricher_db = MagicMock()
+    mock_deps.unifi_api = MagicMock()
+    mock_deps.signal_receiver = MagicMock()
+    return mock_deps
+
+
+def _make_base_db_mock():
+    """Build a mock db module with attributes common to all route tests."""
+    mock_db = MagicMock()
+    mock_db.get_config = MagicMock(return_value=None)
+    mock_db.set_config = MagicMock()
+    mock_db.encrypt_api_key = MagicMock()
+    mock_db.decrypt_api_key = MagicMock()
+    return mock_db
+
+
+class _UniFiPermissionError(Exception):
+    """Mock replacement for unifi_api.UniFiPermissionError."""
+    def __init__(self, msg='', status_code=403):
+        super().__init__(msg)
+        self.status_code = status_code
+
+
+# ── Fixtures ──────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def unifi_client(monkeypatch):
+    """Create a FastAPI TestClient with mocked deps for routes/unifi.py."""
+    _clear_route_modules(monkeypatch)
+
+    mock_deps = _make_base_mock_deps()
+    mock_deps.abuseipdb = MagicMock()
+    monkeypatch.setitem(sys.modules, 'deps', mock_deps)
+
+    mock_db_module = _make_base_db_mock()
+    monkeypatch.setitem(sys.modules, 'db', mock_db_module)
+
+    mock_uapi_module = MagicMock()
+    mock_uapi_module.UniFiPermissionError = _UniFiPermissionError
+    monkeypatch.setitem(sys.modules, 'unifi_api', mock_uapi_module)
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from routes.unifi import router
+
+    app = FastAPI()
+    app.include_router(router)
+    return TestClient(app), mock_deps
+
+
+@pytest.fixture
+def setup_client(monkeypatch):
+    """Create a FastAPI TestClient with mocked deps for routes/setup.py."""
+    _clear_route_modules(monkeypatch)
+
+    mock_deps = _make_base_mock_deps()
+    mock_deps.ttl_cache = MagicMock()
+    monkeypatch.setitem(sys.modules, 'deps', mock_deps)
+
+    mock_db_module = _make_base_db_mock()
+    mock_db_module.count_logs = MagicMock(return_value=100)
+    mock_db_module.is_external_db = MagicMock(return_value=False)
+    monkeypatch.setitem(sys.modules, 'db', mock_db_module)
+
+    mock_parsers = MagicMock()
+    mock_parsers.VPN_PREFIX_BADGES = {}
+    mock_parsers.VPN_INTERFACE_PREFIXES = []
+    mock_parsers.VPN_BADGE_CHOICES = {}
+    mock_parsers.VPN_BADGE_LABELS = {}
+    mock_parsers.VPN_PREFIX_DESCRIPTIONS = {}
+    monkeypatch.setitem(sys.modules, 'parsers', mock_parsers)
+
+    mock_qh = MagicMock()
+    mock_qh.validate_view_filters = MagicMock()
+    monkeypatch.setitem(sys.modules, 'query_helpers', mock_qh)
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from routes.setup import router
+
+    app = FastAPI()
+    app.include_router(router)
+    return TestClient(app), mock_deps, mock_db_module
+
+
+# ── POST /api/firewall/policies/match-log ────────────────────────────────────
+
+class TestMatchLogDisabled:
+    def test_disabled_when_unifi_off(self, unifi_client):
+        client, mock_deps = unifi_client
+        mock_deps.unifi_api.enabled = False
+        resp = client.post('/api/firewall/policies/match-log', json={
+            'interface_in': 'br0', 'interface_out': 'eth3',
+            'rule_name': 'LAN_WAN-D-100',
+        })
+        assert resp.status_code == 200
+        assert resp.json() == {'status': 'disabled'}
+
+    def test_disabled_when_firewall_management_off(self, unifi_client):
+        client, mock_deps = unifi_client
+        mock_deps.unifi_api.enabled = True
+        features_mock = MagicMock()
+        features_mock.get = MagicMock(return_value=False)
+        mock_deps.unifi_api.features = features_mock
+        resp = client.post('/api/firewall/policies/match-log', json={
+            'interface_in': 'br0', 'interface_out': 'eth3',
+            'rule_name': 'LAN_WAN-D-100',
+        })
+        assert resp.status_code == 200
+        assert resp.json() == {'status': 'disabled'}
+
+
+# ── Cache invalidation hooks ─────────────────────────────────────────────────
+
+class TestCacheInvalidation:
+    def test_patch_policy_invalidates_cache(self, unifi_client):
+        client, mock_deps = unifi_client
+        mock_deps.unifi_api.enabled = True
+        features_mock = MagicMock()
+        features_mock.get = MagicMock(return_value=True)
+        mock_deps.unifi_api.features = features_mock
+        mock_deps.unifi_api.patch_firewall_policy.return_value = {'id': 'p1'}
+
+        with patch('routes.unifi.invalidate_fw_cache') as mock_inv:
+            resp = client.patch('/api/firewall/policies/p1', json={
+                'loggingEnabled': True, 'origin': 'USER_DEFINED',
+            })
+            assert resp.status_code == 200
+            mock_inv.assert_called_once()
+
+    def test_setup_complete_invalidates_cache(self, setup_client):
+        client, mock_deps, mock_db = setup_client
+        mock_deps.unifi_api.reload_config = MagicMock()
+        # get_config is called for wan_interfaces — must return a list
+        mock_db.get_config.return_value = ['ppp0']
+
+        with patch('routes.setup.invalidate_fw_cache') as mock_inv:
+            resp = client.post('/api/setup/complete', json={
+                'wan_interfaces': ['eth3'],
+                'interface_labels': {},
+            })
+            assert resp.status_code == 200
+            mock_inv.assert_called_once()
+
+    def test_vpn_save_invalidates_cache(self, setup_client):
+        client, mock_deps, mock_db = setup_client
+
+        with patch('routes.setup.invalidate_fw_cache') as mock_inv:
+            resp = client.post('/api/config/vpn-networks', json={
+                'vpn_networks': {'wg0': {'badge': 'WireGuard', 'cidr': '10.0.0.0/24'}},
+            })
+            assert resp.status_code == 200
+            mock_inv.assert_called_once()

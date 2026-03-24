@@ -163,6 +163,19 @@ class TestBuildZoneMap:
         # Should succeed with no interfaces (graceful degradation)
         assert result['zone_map'][0]['interfaces'] == []
 
+    def test_classic_fallback_ids_do_not_match_integration_zone_ids(self):
+        """Documented limitation: if get_network_config() falls back to the classic API,
+        network IDs use MongoDB-style _id values while zone networkIds use Integration
+        API UUIDs. The ID mismatch means no zone-to-interface joins succeed, silently
+        degrading matching for all non-WAN/Gateway zones."""
+        api = _make_api(
+            zones=[_zone('z1', 'Internal', ['integration-uuid-abc123'])],
+            networks=[_network('classic_5f8a1b2c3d', 'Default', 1)],
+        )
+        result = fpm.build_zone_map(api)
+        # IDs don't match → zone gets no interfaces (silent degradation)
+        assert result['zone_map'][0]['interfaces'] == []
+
 
 # ── match_log_to_policy ──────────────────────────────────────────────────────
 
