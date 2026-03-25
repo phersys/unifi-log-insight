@@ -16,9 +16,10 @@
  * - Columns are user-configurable: discover positions from header text
  */
 
-;(async function () {
+;(async function bootstrap() {
   if (window.__uliFlowEnricherStarted) return;
   window.__uliFlowEnricherStarted = true;
+  window.__uliFlowEnricherBootstrap = bootstrap;
 
   if (!window.__uliUtils?.ensureConfig) return;
   const config = await window.__uliUtils.ensureConfig();
@@ -87,7 +88,10 @@
     }
     observedWrapper = null;
   }
-  window.addEventListener('pagehide', teardownObservers, { once: true });
+  window.addEventListener('pagehide', () => {
+    teardownObservers();
+    window.__uliFlowEnricherStarted = false;
+  }, { once: true });
 
   // Watch for UniFi theme changes — strip badges and re-enrich so blacklist
   // colors and IP text colors update without requiring a page refresh.
@@ -463,3 +467,9 @@
     return '#991b1b';                    // red-900
   }
 })();
+// BFCache restore: re-bootstrap when the page is restored from cache.
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted && !window.__uliFlowEnricherStarted) {
+    window.__uliFlowEnricherBootstrap?.();
+  }
+});

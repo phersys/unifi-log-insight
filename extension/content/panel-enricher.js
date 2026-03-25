@@ -17,9 +17,10 @@
  * - Theme: panel classes include -light or -dark suffixes
  */
 
-;(async function () {
+;(async function bootstrap() {
   if (window.__uliPanelEnricherStarted) return;
   window.__uliPanelEnricherStarted = true;
+  window.__uliPanelEnricherBootstrap = bootstrap;
 
   if (!window.__uliUtils?.ensureConfig) return;
   const config = await window.__uliUtils.ensureConfig();
@@ -63,6 +64,7 @@
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
     if (panelObserver) { panelObserver.disconnect(); panelObserver = null; }
     themeObs.disconnect();
+    window.__uliPanelEnricherStarted = false;
   }
   window.addEventListener('pagehide', teardown, { once: true });
 
@@ -279,3 +281,9 @@
     return `<div class="row"><span class="label">${escapeHtml(label)}</span><span class="value">${valueHtml}</span></div>`;
   }
 })();
+// BFCache restore: re-bootstrap when the page is restored from cache.
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted && !window.__uliPanelEnricherStarted) {
+    window.__uliPanelEnricherBootstrap?.();
+  }
+});

@@ -6,9 +6,10 @@
  * Runs in content script isolated world (has chrome.runtime access).
  */
 
-;(async function () {
+;(async function bootstrap() {
   if (window.__uliTabInjectorStarted) return;
   window.__uliTabInjectorStarted = true;
+  window.__uliTabInjectorBootstrap = bootstrap;
 
   if (!window.__uliUtils?.ensureConfig) return;
   const config = await window.__uliUtils.ensureConfig();
@@ -121,6 +122,7 @@
     window.removeEventListener('hashchange', onPossibleRouteChange);
     document.removeEventListener('keydown', onEscKey);
     window.removeEventListener('uli-navigate', onUliNavigate);
+    window.__uliTabInjectorStarted = false;
   };
   window.addEventListener('pagehide', teardown, { once: true });
 
@@ -468,3 +470,10 @@
   };
   window.addEventListener('uli-navigate', onUliNavigate);
 })();
+// BFCache restore: pagehide tears down observers but content scripts are not
+// re-injected. Re-bootstrap when the page is restored from cache.
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted && !window.__uliTabInjectorStarted) {
+    window.__uliTabInjectorBootstrap?.();
+  }
+});

@@ -201,7 +201,8 @@ async function refreshSetupAuthHint() {
     const hint = !!(authResp.ok && authResp.data && authResp.data.auth_enabled_effective);
     if (hint !== setupAuthHint) {
       setupAuthHint = hint;
-      showSetup();
+      // Only re-render if setup view is still active (avoid clobbering connected/auth-gate)
+      if (!setupView.hidden) showSetup();
     }
   } catch (err) {
     console.debug('[ULI][Popup] localhost auth probe failed:', err?.message);
