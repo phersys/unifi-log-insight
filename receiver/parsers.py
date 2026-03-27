@@ -62,10 +62,12 @@ DNS_FORWARD = re.compile(r'forwarded\s+(\S+)\s+to\s+([0-9a-fA-F:.]+)')
 DNS_CACHED  = re.compile(r'cached\s+(\S+)\s+is\s+(.+)')
 
 # ── DHCP (dnsmasq-dhcp) ───────────────────────────────────────────────────────
-DHCP_ACK     = re.compile(r'DHCPACK\((\S+)\)\s+([0-9a-fA-F:.]+)\s+([0-9a-f:]+)\s*(\S*)')
-DHCP_DISC    = re.compile(r'DHCPDISCOVER\((\S+)\)\s+([0-9a-f:]+)')
-DHCP_OFFER   = re.compile(r'DHCPOFFER\((\S+)\)\s+([0-9a-fA-F:.]+)\s+([0-9a-f:]+)')
-DHCP_REQ     = re.compile(r'DHCPREQUEST\((\S+)\)\s+([0-9a-fA-F:.]+)\s+([0-9a-f:]+)')
+MAC_PATTERN = r'[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5}'
+MAC_RE      = re.compile(MAC_PATTERN)
+DHCP_ACK     = re.compile(rf'DHCPACK\((\S+)\)\s+([0-9a-fA-F:.]+)\s+({MAC_PATTERN})\s*(\S*)')
+DHCP_DISC    = re.compile(rf'DHCPDISCOVER\((\S+)\)\s+(?:([0-9a-fA-F:.]+)\s+)?({MAC_PATTERN})')
+DHCP_OFFER   = re.compile(rf'DHCPOFFER\((\S+)\)\s+([0-9a-fA-F:.]+)\s+({MAC_PATTERN})')
+DHCP_REQ     = re.compile(rf'DHCPREQUEST\((\S+)\)\s+([0-9a-fA-F:.]+)\s+({MAC_PATTERN})')
 
 # ── WiFi (stamgr / hostapd) ───────────────────────────────────────────────────
 WIFI_EVENT  = re.compile(r'(\w+):\s+STA\s+([0-9a-f:]+)')
@@ -411,7 +413,9 @@ def parse_dhcp(body: str) -> dict:
     m = DHCP_DISC.search(body)
     if m:
         result['interface_in'] = m.group(1)
-        result['mac_address'] = m.group(2)
+        if m.group(2):
+            result['src_ip'] = m.group(2)
+        result['mac_address'] = m.group(3)
         result['dhcp_event'] = 'DHCPDISCOVER'
         return result
 
@@ -527,6 +531,12 @@ def parse_log(raw_log: str) -> dict | None:
             except ValueError:
                 logger.warning("Invalid %s '%s' in log: %.300s", ip_field, ip_val, original_raw)
                 parsed[ip_field] = None
+
+    # Validate MAC field — reject invalid macaddr values before DB insert
+    mac_val = parsed.get('mac_address')
+    if mac_val and not MAC_RE.fullmatch(mac_val):
+        logger.warning("Invalid mac_address '%s' in log: %.300s", mac_val, original_raw)
+        parsed['mac_address'] = None
 
     return parsed
 

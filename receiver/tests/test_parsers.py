@@ -257,6 +257,15 @@ class TestParseDhcp:
         assert r['mac_address'] == 'aa:bb:cc:dd:ee:ff'
         assert 'src_ip' not in r
 
+    def test_discover_with_ip(self):
+        """Some gateways emit IP before MAC in DHCPDISCOVER."""
+        body = 'dnsmasq-dhcp[1234]: DHCPDISCOVER(br40) 10.10.10.5 aa:bb:cc:dd:ee:ff'
+        r = parse_dhcp(body)
+        assert r['dhcp_event'] == 'DHCPDISCOVER'
+        assert r['mac_address'] == 'aa:bb:cc:dd:ee:ff'
+        assert r['src_ip'] == '10.10.10.5'
+        assert r['interface_in'] == 'br40'
+
     def test_request(self):
         body = 'dnsmasq-dhcp[1234]: DHCPREQUEST(br0) 192.168.1.100 aa:bb:cc:dd:ee:ff'
         r = parse_dhcp(body)
@@ -477,6 +486,30 @@ class TestParseLog:
         r = parse_log(line)
         assert r['log_type'] == 'dns'
         assert r['dns_query'] == 'example.com'
+
+    def test_valid_dhcp_mac_preserved(self, monkeypatch):
+        """Valid MAC from DHCPDISCOVER with IP is preserved through validation."""
+        monkeypatch.setenv('TZ', 'UTC')
+        line = 'Feb  8 16:43:49 UDR dnsmasq-dhcp[1234]: DHCPDISCOVER(br40) 10.10.10.5 aa:bb:cc:dd:ee:ff'
+        r = parse_log(line)
+        assert r['log_type'] == 'dhcp'
+        assert r['mac_address'] == 'aa:bb:cc:dd:ee:ff'
+
+    def test_invalid_mac_set_to_none(self, monkeypatch):
+        """MAC validation rejects non-MAC strings before DB insert."""
+        monkeypatch.setenv('TZ', 'UTC')
+        line = 'Feb  8 16:43:49 UDR hostapd: ath0: STA aa:bb:cc IEEE 802.11: associated'
+        r = parse_log(line)
+        assert r['log_type'] == 'wifi'
+        assert r['mac_address'] is None
+
+    def test_wifi_mac_survives_validation(self, monkeypatch):
+        """Global MAC validation must not break valid WiFi MACs."""
+        monkeypatch.setenv('TZ', 'UTC')
+        line = 'Feb  8 16:43:49 UDR hostapd: ath0: STA aa:bb:cc:dd:ee:ff IEEE 802.11: associated'
+        r = parse_log(line)
+        assert r['log_type'] == 'wifi'
+        assert r['mac_address'] == 'aa:bb:cc:dd:ee:ff'
 
     def test_system_end_to_end(self, monkeypatch):
         monkeypatch.setenv('TZ', 'UTC')
