@@ -12,7 +12,7 @@ import subprocess
 import threading
 import time
 
-from psycopg2 import pool
+from psycopg2 import extensions, pool
 
 from db import Database, build_conn_params, wait_for_postgres
 from enrichment import AbuseIPDBEnricher
@@ -68,8 +68,27 @@ def get_conn(retries=3, wait=0.5):
 
 
 def put_conn(conn):
-    """Return connection to pool, discarding if broken."""
-    db_pool.putconn(conn, close=bool(conn.closed))
+    """Return connection to pool, discarding if broken.
+
+    Rolls back non-IDLE connections (e.g. after statement_timeout) before
+    returning them to the pool.  If rollback fails or the connection is
+    still not IDLE afterward, the connection is discarded instead.
+    """
+    if conn.closed:
+        db_pool.putconn(conn, close=True)
+        return
+
+    close_conn = False
+    try:
+        status = conn.info.transaction_status
+        if status != extensions.TRANSACTION_STATUS_IDLE:
+            conn.rollback()
+            status = conn.info.transaction_status
+        close_conn = status != extensions.TRANSACTION_STATUS_IDLE
+    except Exception:
+        close_conn = True
+
+    db_pool.putconn(conn, close=close_conn)
 
 
 # ── AbuseIPDB Enricher (for manual enrich endpoint) ─────────────────────────
