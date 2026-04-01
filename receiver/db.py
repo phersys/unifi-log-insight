@@ -156,6 +156,8 @@ INSERT_SQL = f"""
 class Database:
     """PostgreSQL connection pool and operations."""
 
+    _IDX_LOGS_DST_IP_SPGIST = 'idx_logs_spgist_dst_ip_firewall'
+
     def __init__(self, conn_params: dict | None = None, min_conn: int = 2, max_conn: int = 10):
         self.conn_params = conn_params or build_conn_params()
         self.pool = None
@@ -712,8 +714,6 @@ END $$;""",
             sys.exit(1)
 
         self._backfill_tz_timestamps()
-
-    _IDX_LOGS_DST_IP_SPGIST = 'idx_logs_spgist_dst_ip_firewall'
 
     def ensure_post_boot_indexes(self):
         """Create performance indexes that require CONCURRENTLY (existing installs).
