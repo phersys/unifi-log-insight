@@ -194,11 +194,22 @@ def test_unifi_connection(body: dict):
 
 @router.get("/api/setup/unifi-network-config")
 def unifi_network_config():
-    """UniFi API-based network topology for wizard."""
+    """UniFi API-based network topology for wizard.
+
+    Returns WAN interfaces, network/VLAN topology, and VPN networks so the
+    UniFi-path setup wizard can initialize without log scans.
+    """
     if not unifi_api.enabled:
         raise HTTPException(status_code=400, detail="UniFi API not configured")
     try:
-        return unifi_api.get_network_config()
+        result = unifi_api.get_network_config()
+        # Include VPN networks so the wizard doesn't need to call network-segments
+        try:
+            result['vpn_networks'] = unifi_api.get_vpn_networks()
+        except Exception:
+            logger.warning("Could not fetch VPN networks for setup", exc_info=True)
+            result['vpn_networks'] = []
+        return result
     except SSLError:
         logger.exception("Failed to fetch UniFi network config")
         raise HTTPException(status_code=502, detail=_ERR_SSL)

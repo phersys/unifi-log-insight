@@ -4,7 +4,7 @@ import WizardStepWAN from './WizardStepWAN'
 import WizardStepLabels from './WizardStepLabels'
 import FirewallRules from './FirewallRules'
 import VpnNetworkTable from './VpnNetworkTable'
-import { fetchConfig, fetchUniFiNetworkConfig, fetchUniFiSettings, fetchNetworkSegments, saveSetupConfig } from '../api'
+import { fetchConfig, fetchUniFiNetworkConfig, fetchUniFiSettings, saveSetupConfig } from '../api'
 import { suggestVpnType } from '../vpnUtils'
 import { validateInterfaceName } from '../utils'
 
@@ -160,29 +160,32 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
         }
         setInterfaceLabels(newLabels)
       }
-      // Also fetch VPN segments from logs — pass ALL WAN interfaces
-      try {
-        const wans = entries.map(w => w.physical_interface)
-        const segData = await fetchNetworkSegments(wans)
-        const vpnSegs = (segData.segments || []).filter(s => s.is_vpn)
-        setVpnSegments(vpnSegs)
-        // Initialize VPN configs for detected VPN interfaces
+      // Initialize VPN configs from UniFi API data (no log scan needed)
+      const apiVpns = netConfig.vpn_networks || []
+      if (apiVpns.length) {
+        setVpnSegments(apiVpns.map(v => ({
+          interface: v.interface,
+          is_vpn: true,
+          suggested_badge: v.badge,
+          suggested_cidr: v.cidr,
+        })))
         const vpnInit = { ...vpnNetworks }
         let vpnChanged = false
-        for (const seg of vpnSegs) {
-          if (!vpnInit[seg.interface]) {
-            vpnInit[seg.interface] = { badge: 'VPN', cidr: seg.suggested_cidr || '', type: seg.suggested_badge || suggestVpnType(seg.interface) || '' }
+        for (const vpn of apiVpns) {
+          if (!vpnInit[vpn.interface]) {
+            vpnInit[vpn.interface] = {
+              badge: vpn.badge || 'VPN',
+              cidr: vpn.cidr || '',
+              type: vpn.badge || suggestVpnType(vpn.interface) || '',
+            }
             vpnChanged = true
           }
-          // Set VPN label to type abbreviation (not "VPN")
-          if (!newLabels[seg.interface]) {
-            newLabels[seg.interface] = seg.suggested_badge || suggestVpnType(seg.interface) || ''
+          if (!newLabels[vpn.interface]) {
+            newLabels[vpn.interface] = vpn.badge || suggestVpnType(vpn.interface) || ''
           }
         }
         if (vpnChanged) setVpnNetworks(vpnInit)
         setInterfaceLabels(newLabels)
-      } catch (vpnErr) {
-        console.error('Failed to fetch VPN segments:', vpnErr)
       }
     } catch (err) {
       console.error('Failed to fetch network config:', err)
