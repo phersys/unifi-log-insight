@@ -1,0 +1,76 @@
+# UniFi Insights Plus - Coolify / PaaS template
+#
+# Use this file when deploying to Coolify, Dokploy, or any platform that
+# imports docker-compose.yml and exposes env vars through a dashboard.
+#
+# Why a separate file: Docker Compose treats inline env var values
+# (e.g. DB_HOST: "postgres") as fixed. Platforms like Coolify then lock
+# those values in their UI and you cannot edit them. Using ${VAR}
+# interpolation keeps every variable editable from the dashboard.
+#
+# Setup:
+#   1. In Coolify, create a new resource from this compose file.
+#   2. Provision a PostgreSQL resource (managed or container).
+#   3. In the Coolify env editor, set at minimum:
+#        DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, DB_SSLMODE
+#        SECRET_KEY, TZ
+#      Optional: ABUSEIPDB_API_KEY, MAXMIND_ACCOUNT_ID, MAXMIND_LICENSE_KEY,
+#                UNIFI_HOST, UNIFI_API_KEY, AUTH_ENABLED, LOG_LEVEL
+#   4. Deploy.
+#
+# When DB_HOST is anything other than localhost, the embedded PostgreSQL
+# is automatically disabled and the container runs in external DB mode.
+# See https://insightsplus.dev/docs/external-database
+
+services:
+  unifi-log-insight:
+    image: ghcr.io/jmasarweh/unifi-log-insight:latest
+    pull_policy: always
+    container_name: unifi-log-insight
+    restart: unless-stopped
+    shm_size: '256mb'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    ports:
+      - "514:514/udp"
+      - "8090:8000"
+    volumes:
+      - ./maxmind:/app/maxmind
+    environment:
+      # External database (required on Coolify)
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-unifi_logs}
+      DB_USER: ${DB_USER:-unifi}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSLMODE: ${DB_SSLMODE:-require}
+
+      # Encryption key for stored API keys. Use a strong random string.
+      SECRET_KEY: ${SECRET_KEY}
+
+      # Core settings
+      TZ: ${TZ:-UTC}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      # Optional: threat intelligence
+      ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY:-}
+
+      # Optional: GeoIP auto-update (AccountID must be numeric)
+      MAXMIND_ACCOUNT_ID: ${MAXMIND_ACCOUNT_ID:-}
+      MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
+
+      # Optional: UniFi controller integration
+      UNIFI_HOST: ${UNIFI_HOST:-}
+      UNIFI_API_KEY: ${UNIFI_API_KEY:-}
+
+      # Optional: authentication
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
