@@ -318,6 +318,111 @@ def test_post_boot_indexes_all_use_concurrently():
         assert 'CONCURRENTLY' in idx['sql'], f"{idx['name']} missing CONCURRENTLY"
 
 
+# ── Post-boot drops (issue #85) ──────────────────────────────────────────────
+
+def test_post_boot_drops_list_has_expected_entries():
+    """_POST_BOOT_DROPS contains the two redundant leftmost-prefix indexes."""
+    names = {name for name, _sql in Database._POST_BOOT_DROPS}
+    assert names == {'idx_logs_type', 'idx_logs_rule_action'}
+
+
+def test_post_boot_drops_all_use_concurrently_and_if_exists():
+    """Every drop SQL must be CONCURRENTLY + IF EXISTS (idempotent, safe)."""
+    for _name, sql in Database._POST_BOOT_DROPS:
+        assert 'DROP INDEX CONCURRENTLY IF EXISTS' in sql
+
+
+def test_post_boot_drops_executed(monkeypatch):
+    """ensure_post_boot_indexes() issues DROP IF EXISTS for each redundant index."""
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = (1,)  # creates skipped (already exist)
+    mock_cursor.__enter__ = lambda s: s
+    mock_cursor.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value = mock_cursor
+
+    database = Database(conn_params={'user': 'unifi'})
+    monkeypatch.setattr('db.psycopg2.connect', lambda **kw: mock_conn)
+
+    database.ensure_post_boot_indexes()
+
+    executed_sql = ' '.join(str(c) for c in mock_cursor.execute.call_args_list)
+    assert 'DROP INDEX CONCURRENTLY IF EXISTS idx_logs_type' in executed_sql
+    assert 'DROP INDEX CONCURRENTLY IF EXISTS idx_logs_rule_action' in executed_sql
+
+
+def test_post_boot_drops_set_lock_timeout_before_drops(monkeypatch):
+    """SET lock_timeout must be issued before any DROP INDEX to bound startup stall."""
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = (1,)  # creates skipped
+    mock_cursor.__enter__ = lambda s: s
+    mock_cursor.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value = mock_cursor
+
+    database = Database(conn_params={'user': 'unifi'})
+    monkeypatch.setattr('db.psycopg2.connect', lambda **kw: mock_conn)
+
+    database.ensure_post_boot_indexes()
+
+    executed = [str(c) for c in mock_cursor.execute.call_args_list]
+    lock_timeout_idx = next(i for i, s in enumerate(executed) if 'lock_timeout' in s)
+    first_drop_idx = next(i for i, s in enumerate(executed) if 'DROP INDEX' in s)
+    assert lock_timeout_idx < first_drop_idx
+
+
+def test_post_boot_drops_skipped_if_set_lock_timeout_fails(monkeypatch):
+    """If SET lock_timeout fails, drops are skipped entirely (safer default)."""
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = (1,)  # creates skipped
+
+    def execute_side_effect(sql, params=None):
+        if 'lock_timeout' in str(sql):
+            raise Exception("simulated SET failure")
+
+    mock_cursor.execute.side_effect = execute_side_effect
+    mock_cursor.__enter__ = lambda s: s
+    mock_cursor.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value = mock_cursor
+
+    database = Database(conn_params={'user': 'unifi'})
+    monkeypatch.setattr('db.psycopg2.connect', lambda **kw: mock_conn)
+
+    database.ensure_post_boot_indexes()
+
+    executed_sql = ' '.join(str(c) for c in mock_cursor.execute.call_args_list)
+    assert 'DROP INDEX' not in executed_sql
+
+
+def test_post_boot_drops_continue_after_single_failure(monkeypatch):
+    """If one drop fails, the remaining drops are still attempted."""
+    def execute_side_effect(sql, params=None):
+        if isinstance(sql, str) and sql == "DROP INDEX CONCURRENTLY IF EXISTS idx_logs_type":
+            raise Exception("simulated DROP failure")
+
+    mock_cursor = MagicMock()
+    mock_cursor.execute = MagicMock(side_effect=execute_side_effect)
+    mock_cursor.fetchone.return_value = (1,)  # creates skipped
+    mock_cursor.__enter__ = lambda s: s
+    mock_cursor.__exit__ = MagicMock(return_value=False)
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value = mock_cursor
+
+    database = Database(conn_params={'user': 'unifi'})
+    monkeypatch.setattr('db.psycopg2.connect', lambda **kw: mock_conn)
+    mock_logger = MagicMock()
+    monkeypatch.setattr(db_module, 'logger', mock_logger)
+
+    database.ensure_post_boot_indexes()
+
+    executed = ' '.join(str(c) for c in mock_cursor.execute.call_args_list)
+    assert 'idx_logs_rule_action' in executed  # second drop attempted
+    warning_calls = [c for c in mock_logger.warning.call_args_list
+                     if 'idx_logs_type' in str(c)]
+    assert len(warning_calls) >= 1
+
+
 # ── Retention validation ──────────────────────────────────────────────────────
 
 def test_validate_retention_days_rejects_zero():
