@@ -179,6 +179,14 @@ class Database:
         },
     ]
 
+    # Redundant indexes dropped on upgrade. Each is a leftmost-prefix of an
+    # existing composite so the planner loses nothing, but they incur write
+    # amplification on every INSERT. DROP CONCURRENTLY IF EXISTS is idempotent.
+    _POST_BOOT_DROPS = [
+        ('idx_logs_type',        "DROP INDEX CONCURRENTLY IF EXISTS idx_logs_type"),
+        ('idx_logs_rule_action', "DROP INDEX CONCURRENTLY IF EXISTS idx_logs_rule_action"),
+    ]
+
     def __init__(self, conn_params: dict | None = None, min_conn: int = 2, max_conn: int = 10):
         self.conn_params = conn_params or build_conn_params()
         self.pool = None
@@ -250,10 +258,8 @@ class Database:
             )""",
             # Performance indexes from init.sql
             "CREATE INDEX IF NOT EXISTS idx_logs_timestamp    ON logs (timestamp DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_logs_type         ON logs (log_type)",
             "CREATE INDEX IF NOT EXISTS idx_logs_src_ip       ON logs (src_ip)",
             "CREATE INDEX IF NOT EXISTS idx_logs_dst_ip       ON logs (dst_ip)",
-            "CREATE INDEX IF NOT EXISTS idx_logs_rule_action  ON logs (rule_action)",
             "CREATE INDEX IF NOT EXISTS idx_logs_direction    ON logs (direction)",
             "CREATE INDEX IF NOT EXISTS idx_logs_threat_score ON logs (threat_score) WHERE threat_score IS NOT NULL",
             "CREATE INDEX IF NOT EXISTS idx_logs_type_time    ON logs (log_type, timestamp DESC)",
@@ -714,11 +720,16 @@ END $$;""",
         self._backfill_tz_timestamps()
 
     def ensure_post_boot_indexes(self):
-        """Create heavyweight indexes with CONCURRENTLY for existing installs.
+        """Create heavyweight indexes and drop redundant ones for existing installs.
 
         Uses a dedicated autocommit connection (CONCURRENTLY cannot run inside
-        a transaction).  Fresh installs get these from init.sql; this handles
-        upgrades.  Skips indexes that already exist.
+        a transaction).  Fresh installs get the create list from init.sql;
+        this handles upgrades.  Skips creates for indexes that already exist
+        and issues drops with IF EXISTS.
+
+        A short lock_timeout is set before the drop loop so a stuck
+        DROP CONCURRENTLY cannot stall receiver startup indefinitely — on
+        timeout the drop retries on the next boot.
 
         Must be called from the receiver startup path only — not from
         Database.connect() — to avoid the API and receiver both racing on
@@ -728,7 +739,7 @@ END $$;""",
             conn = psycopg2.connect(**self.conn_params)
             conn.autocommit = True
         except Exception:
-            logger.warning("Post-boot index creation failed (connect) — will retry next boot",
+            logger.warning("Post-boot index maintenance failed (connect) — will retry next boot",
                            exc_info=True)
             return
         try:
@@ -748,6 +759,29 @@ END $$;""",
                 except Exception:
                     logger.warning("Could not create %s — will retry next boot",
                                    idx['name'], exc_info=True)
+
+            # Drop redundant indexes (idempotent via IF EXISTS). Bound by a
+            # short lock_timeout so a stuck DROP cannot stall receiver boot.
+            # Note: lock_timeout only bounds the final ACCESS EXCLUSIVE phase;
+            # a long-running query holding a snapshot that references the index
+            # can still delay phase (a). The retry-next-boot loop is the real
+            # safety net.
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SET lock_timeout = '60s'")
+            except Exception:
+                logger.warning("Could not set lock_timeout — skipping post-boot drops, "
+                               "will retry next boot", exc_info=True)
+                return
+            for name, sql in self._POST_BOOT_DROPS:
+                try:
+                    with conn.cursor() as cur:
+                        logger.info("Dropping redundant index %s...", name)
+                        cur.execute(sql)
+                        logger.info("Index %s dropped (if it existed)", name)
+                except Exception:
+                    logger.warning("Could not drop %s — will retry next boot",
+                                   name, exc_info=True)
         finally:
             conn.close()
 

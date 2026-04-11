@@ -46,10 +46,8 @@ CREATE TABLE IF NOT EXISTS logs (
 
 -- Performance indexes
 CREATE INDEX IF NOT EXISTS idx_logs_timestamp    ON logs (timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_logs_type         ON logs (log_type);
 CREATE INDEX IF NOT EXISTS idx_logs_src_ip       ON logs (src_ip);
 CREATE INDEX IF NOT EXISTS idx_logs_dst_ip       ON logs (dst_ip);
-CREATE INDEX IF NOT EXISTS idx_logs_rule_action  ON logs (rule_action);
 CREATE INDEX IF NOT EXISTS idx_logs_direction    ON logs (direction);
 CREATE INDEX IF NOT EXISTS idx_logs_threat_score ON logs (threat_score) WHERE threat_score IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_logs_service_name ON logs (service_name) WHERE service_name IS NOT NULL;
