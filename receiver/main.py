@@ -261,6 +261,8 @@ def _retention_cleanup(db: Database):
     """Run a full retention cleanup pass. Called by the schedule library."""
     try:
         cfg = Database.resolve_retention_days(db)
+        logger.info("Retention cleanup starting (general_retention=%d days, dns_retention=%d days)",
+                    cfg.general, cfg.dns)
         result = db.run_retention_cleanup(cfg.general, cfg.dns)
         if result['status'] == 'partial':
             logger.warning("Retention cleanup partial: %d deleted, error: %s",

@@ -1168,12 +1168,15 @@ END $$;""",
                          result['status'], result['deleted_so_far'], exc)
             return result
 
-        if result['deleted_so_far'] > 0:
-            logger.info("Retention cleanup: deleted %d old logs "
-                        "(dns_deleted=%d, non_dns_deleted=%d, "
-                        "general_retention=%d days, dns_retention=%d days)",
-                        result['deleted_so_far'], result['dns_deleted'],
-                        result['non_dns_deleted'], general_days, dns_days)
+        # Always log completion — including zero-row runs — so operators can
+        # confirm the cleanup fired even on quiet days. Previously gated on
+        # deleted_so_far > 0, which made successful no-op runs indistinguishable
+        # from the job never firing at all.
+        logger.info("Retention cleanup: deleted %d old logs "
+                    "(dns_deleted=%d, non_dns_deleted=%d, "
+                    "general_retention=%d days, dns_retention=%d days)",
+                    result['deleted_so_far'], result['dns_deleted'],
+                    result['non_dns_deleted'], general_days, dns_days)
         return result
 
     def get_stats(self) -> dict:
