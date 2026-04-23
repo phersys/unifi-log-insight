@@ -54,7 +54,7 @@ def client(monkeypatch):
     # SimpleNamespace, not RetentionDaysConfig / RetentionTimeConfig: the db
     # module is mocked in sys.modules before routes are imported, so importing
     # the real NamedTuples from it would return a MagicMock. SimpleNamespace
-    # gives route code the same .general / .dns / .hour / .source attribute
+    # gives route code the same .general / .dns / .time / .source attribute
     # access without pretending to be the real type.
     default_days = SimpleNamespace(general=60, general_source='default', dns=10, dns_source='default')
     default_time = SimpleNamespace(time='03:00', source='default')
